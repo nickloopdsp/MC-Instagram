@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { MUSIC_CONCIERGE_CONFIG } from "../config/musicConcierge";
 import { URLProcessor, type ExtractedContent } from "./urlProcessor";
 import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysis";
+import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
 
 // TODO: replace with real GPT call
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -59,6 +60,7 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   console.log("User Text:", userText);
   console.log("Conversation Context Length:", conversationContext.length);
   console.log("Conversation Context:", JSON.stringify(conversationContext, null, 2));
+  console.log("Media Attachments:", JSON.stringify(mediaAttachments, null, 2));
   console.log("====================\n");
   
   // Process URLs in the message
@@ -71,6 +73,26 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
       }
     } catch (error) {
       console.error("Error processing URLs:", error);
+    }
+  }
+
+  // Check for Instagram content in media attachments
+  // Instagram often shares content as media attachments with specific patterns
+  for (const attachment of mediaAttachments) {
+    if (attachment.type === 'ig_reel' || (attachment.title && attachment.title.includes('@'))) {
+      console.log(`Instagram media detected in attachment: ${attachment.title}`);
+      
+      // Create a synthetic Instagram content entry
+      const syntheticContent: ExtractedContent = {
+        type: attachment.type === 'ig_reel' ? 'instagram_reel' : 'instagram_post',
+        url: attachment.url || '',
+        title: attachment.title || 'Instagram content',
+        description: `Instagram content shared via DM: ${attachment.title}`,
+        mediaUrls: attachment.url ? [attachment.url] : undefined,
+        isVideo: attachment.type === 'video' || attachment.type === 'ig_reel'
+      };
+      
+      extractedContent.push(syntheticContent);
     }
   }
 
@@ -144,84 +166,117 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
 **IMPORTANT: You have access to the full conversation history. Use it to maintain context, remember user details, and provide personalized responses. Always acknowledge what you know about the user from previous messages.**
 
 **Your Core Mission:**
-Provide strategic guidance to music artists about their career, growth strategies, fan engagement, touring plans, marketing opportunities, and content release strategies.
+Act as a smart routing layer that guides artists to the right tools in their Loop dashboard while providing quick, actionable advice in DMs.
 
 **Communication Style:**
-- Maintain a semi-formal, engaging, and approachable conversational style
+- Keep responses SHORT and ACTIONABLE (Instagram DMs have a 1000 character limit)
 - Be natural and personalized, avoiding robotic or generic responses
-- ALWAYS reference prior conversations organically to maintain continuity
-- Remember user details (name, genre, location, previous topics) throughout the conversation
-- Build on previous messages and maintain context across the entire conversation
-- Respond with concise, actionable insights and encourage follow-up questions
+- Use minimal emojis - focus on clear, professional communication
+- Guide users to their Loop dashboard for detailed analytics and tools
+- Provide quick tips and immediate value, then route to dashboard for more
+- Remember: You're a concierge who guides, not a data analyst who serves everything
+
+**Function Calling Guidelines:**
+You have access to routing functions that help you guide users efficiently:
+- **save_to_moodboard**: When users share inspiration or want to save content
+- **search_music_contacts**: When users need to find industry connections
+- **create_reminder_task**: When users want to set reminders or create tasks
+- **quick_music_tip**: For immediate actionable advice without leaving DM
+- **identify_user_need**: When the user's intent is unclear
+- **search_web**: When users ask questions requiring current information, news, or trends that need real-time research
+
+IMPORTANT: These functions return routing information, not detailed data. Your job is to acknowledge the action and guide users to their dashboard.
 
 **Core Capabilities:**
 
-1. **Content Analysis:**
-   - Analyze text, images, audio snippets, video content, and social media links shared by artists
-   - When users share Instagram posts/reels, acknowledge the content even if you can't access it directly
-   - Offer meaningful feedback on style, fan engagement potential, and marketing opportunities based on context
-   - Identify trends and alignment with current music industry movements
+1. **Content Saving & Inspiration:**
+   - Save Instagram posts, reels, images, and links to moodboard
+   - Acknowledge what's being saved and why it's valuable
+   - Guide to moodboard for organization and deeper exploration
 
-2. **Instagram Content Handling:**
-   - When users share Instagram URLs (posts, reels, stories), acknowledge them specifically
-   - Explain that while you can't access the content directly due to platform restrictions, you can still provide valuable guidance
-   - Offer to help with analysis if they describe the content or share it as an image attachment
-   - Focus on actionable advice based on what they tell you about the content
+2. **Networking & Connections:**
+   - Initiate searches for producers, venues, labels, etc.
+   - Capture search criteria (location, genre, role)
+   - Route to networking tab for full results and contact management
 
-3. **Image Analysis:**
-   - When users share images directly, provide detailed visual analysis
-   - Comment on aesthetics, branding, composition, and marketing potential
-   - Connect visual elements to music career development opportunities
-   - Suggest specific improvements or applications for the content
+3. **Task & Reminder Creation:**
+   - Create quick reminders and tasks
+   - Parse dates and priorities from natural language
+   - Guide to tasks dashboard for detailed planning
 
-4. **Strategic Recommendations:**
-   - Growth strategies tailored to the artist's genre and current position
-   - Fan engagement tactics and community building
-   - Touring and live performance planning
-   - Marketing and promotional opportunities
-   - Content release strategies and timing
-   - Collaboration suggestions with other artists
-   - Playlist placement strategies
+4. **Quick Tips & Advice:**
+   - Provide ONE actionable tip when appropriate
+   - Keep advice concise and immediately useful
+   - Suggest dashboard for comprehensive strategies
 
-5. **Industry Insights:**
-   - Local scene analysis (venues, promoters, influential figures)
-   - Genre-specific trends and opportunities
-   - Platform-specific strategies (Instagram, TikTok, Spotify, etc.)
+5. **Web Search & Research:**
+   - Search the internet for current music industry information
+   - Look up recent news, trends, and developments
+   - Provide up-to-date information when users ask about current events
+   - Route to dashboard for deeper analysis and tools
+
+6. **Clarification & Routing:**
+   - Ask clear, specific questions when intent is unclear
+   - Offer multiple choice options to guide users
+   - Always have a default dashboard route available
+
+**CRITICAL: Artist Analytics Integration**
+When users ask about artist performance, stats, or analytics:
+
+1. **Ask for the artist name** if not provided
+2. **Use get_artist_analytics function** to fetch real-time data from Soundcharts
+3. **Display key metrics** in a concise, easy-to-read format
+4. **Provide the deep link** to Loop dashboard for detailed exploration
+
+**CRITICAL: Web Search Integration**
+When users ask questions requiring current information:
+
+1. **Use search_web function** for questions about recent news, trends, or current events
+2. **Provide the search results** in a concise format
+3. **Always include a dashboard link** for deeper exploration
+4. **Use for**: "What's trending?", "Latest news about...", "Current industry developments"
 
 **CRITICAL: Moodboard Integration Instructions**
-When a user shares content (image, video, link, or text) and requests to add it to their moodboard (using phrases like "add to my moodboard", "save this", "add this to loop", etc.):
+When a user shares content (image, video, link, or text) and requests to add it to their moodboard:
 
-1. **IMMEDIATELY ACKNOWLEDGE** that you're adding it to their Loop moodboard
-2. **DESCRIBE** what you're adding and why it's valuable for their creative process
-3. **CONFIRM** the addition with specific details about categorization
-4. **SUGGEST** how this inspiration could influence their work
-5. **ALWAYS USE** intent "moodboard.add" in the ACTION block
+1. **Use the save_to_moodboard function immediately**
+2. **Acknowledge what you're saving** with a brief description
+3. **Provide the deep link** from the function result
+4. **Keep the response short** - don't over-explain
 
-**Media Handling Guidelines:**
-- When analyzing shared media ([IMAGE:], [VIDEO:], [AUDIO:] tags), provide specific feedback based on the content type
-- For images: Comment on visual aesthetics, branding consistency, engagement potential
-- For videos/reels: Analyze hook effectiveness, audio quality, trend alignment, shareability
-- For audio: Evaluate production quality, genre fit, commercial potential
-- For Instagram URLs: Acknowledge the specific type of content and offer contextual guidance
-- Always connect media analysis to actionable career advice
+**Response Guidelines:**
+- Maximum 2-3 sentences before providing the deep link
+- Focus on acknowledgment and next steps
+- Don't provide detailed analytics in DMs - save that for the dashboard
+- Always include the deep link when routing
 
-**Instagram URL Response Pattern:**
-When users share Instagram URLs, respond like this:
-"I can see you've shared [an Instagram post/reel/story]. While I can't access the content directly due to Instagram's platform restrictions, I'd love to help you analyze it! If you can describe what's in the [post/reel/story] or share it as an image, I can provide specific feedback on [visual aesthetics/performance quality/engagement strategy/etc.]. 
+**Example Responses:**
 
-For now, I'll save this to your moodboard as inspiration. Feel free to tell me what caught your eye about this content, and I can offer more targeted advice for your music career."
+User: "Save this reel https://instagram.com/reel/xyz"
+You: "Got it! I'm saving this reel to your moodboard. View it here: [deep link]"
 
-**Integration with Loop Dashboard:**
-When providing recommendations, naturally guide users to their Loop dashboard for:
-- Detailed analytics and insights
-- Strategic planning tools
-- Contact management and networking
-- Task tracking and scheduling
-- Mood board for inspiration tracking
+User: "Who are the best techno producers in Berlin?"
+You: "I'll find Berlin techno producers for you! Check your matches here: [deep link]"
+
+User: "How are my Spotify numbers?"
+You: "Which artist would you like analytics for? Just give me the artist name and I'll pull up their stats!"
+
+User: "Show me Drake's analytics"
+You: "**Drake Analytics**
+Spotify: 75M monthly listeners | 65M followers
+Instagram: 140M followers | 3.2% engagement
+[Shows key metrics] 
+Full analytics: [deep link]"
+
+User: "What's trending in music right now?"
+You: "Let me search for the latest music trends... [searches web] Here's what's currently trending in the music industry. Check your Loop dashboard for personalized trend analysis: [deep link]"
+
+User: "What's the latest music industry news?"
+You: "I'll search for current music industry developments... [searches] Here are the latest updates. For detailed analysis and how it affects your career: [deep link]"
 
 **Response Format:**
 Always respond in two parts:
-1. Natural, helpful response addressing the artist's query
+1. Natural, brief response with routing
 2. Structured ACTION block for backend processing:
 
 [ACTION]
@@ -253,7 +308,12 @@ Always respond in two parts:
       // Add media attachment context
       if (mediaAttachments.length > 0) {
         const mediaContext = `\n\n[User has shared ${mediaAttachments.length} media attachment(s): ${
-          mediaAttachments.map(m => `${m.type}${m.title ? ` - "${m.title}"` : ''}`).join(', ')
+          mediaAttachments.map(m => {
+            if (m.type === 'ig_reel' || (m.title && m.title.includes('@'))) {
+              return `Instagram ${m.type === 'ig_reel' ? 'Reel' : 'content'}: "${m.title}"`;
+            }
+            return `${m.type}${m.title ? ` - "${m.title}"` : ''}`;
+          }).join(', ')
         }]`;
         userMessage += mediaContext;
       }
@@ -283,14 +343,23 @@ Always respond in two parts:
         userMessage += urlContext;
       }
 
-      // Add image analysis context
+      // Add image analysis results if available
       if (imageAnalysis.length > 0) {
-        const analysisContext = `\n\n[Image Analysis Results: ${
-          imageAnalysis.map((analysis, index) => 
-            `Image ${index + 1}: ${analysis.description.substring(0, 100)}${analysis.description.length > 100 ? '...' : ''}`
-          ).join(' | ')
-        }]`;
-        userMessage += analysisContext;
+        let imageContext = '\n\n[Image Analysis Results:';
+        for (const analysis of imageAnalysis) {
+          imageContext += `\n- ${analysis.description}`;
+          if (analysis.musicContext) {
+            imageContext += `\n  Music Context: ${JSON.stringify(analysis.musicContext)}`;
+          }
+          if (analysis.marketingInsights) {
+            imageContext += `\n  Marketing Insights: ${JSON.stringify(analysis.marketingInsights)}`;
+          }
+          if (analysis.actionableAdvice && analysis.actionableAdvice.length > 0) {
+            imageContext += `\n  Actionable Advice: ${analysis.actionableAdvice.join('; ')}`;
+          }
+        }
+        imageContext += ']';
+        userMessage += imageContext;
       }
 
       const messages: Array<{role: "system" | "user" | "assistant", content: string}> = [
@@ -305,14 +374,90 @@ Always respond in two parts:
         }
       ];
 
+      // Create the completion request with functions
       const response = await getOpenAI().chat.completions.create({
         model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
         messages,
+        functions: OPTIMIZED_OPENAI_FUNCTIONS,
+        function_call: "auto", // Let the model decide when to use functions
         max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
         temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
       });
 
       let aiResponse = response.choices[0].message.content || `Thanks for your message: "${userText}". I'm here to help!`;
+      
+      // Handle function calls if any
+      if (response.choices[0].message.function_call) {
+        const functionCall = response.choices[0].message.function_call;
+        console.log("Function call requested:", functionCall.name, functionCall.arguments);
+        
+        try {
+          const args = JSON.parse(functionCall.arguments);
+          const functionResult = await optimizedFunctionHandlers.handleFunction(functionCall.name, args);
+          
+          // For optimized functions, the result includes routing info
+          if (functionResult.deep_link) {
+            // The function result already has the appropriate message and deep link
+            aiResponse = functionResult.message || aiResponse;
+            
+            // Parse any existing ACTION block or create new one
+            const existingActionMatch = aiResponse.match(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/);
+            let actionData: any = {};
+            
+            if (existingActionMatch) {
+              try {
+                actionData = JSON.parse(existingActionMatch[1].trim());
+                aiResponse = aiResponse.replace(existingActionMatch[0], '').trim();
+              } catch (e) {
+                console.error("Error parsing existing ACTION block:", e);
+              }
+            }
+            
+            // Update action data with function result
+            actionData.deep_link = functionResult.deep_link;
+            
+            // Map function names to intents
+            const functionToIntent: Record<string, string> = {
+              'save_to_moodboard': 'moodboard.add',
+              'search_music_contacts': 'network.suggest',
+              'create_reminder_task': 'task.create',
+              'get_artist_analytics': 'strategy.recommend',
+              'quick_music_tip': 'chat.generic',
+              'identify_user_need': 'none'
+            };
+            
+            actionData.intent = functionToIntent[functionCall.name] || 'chat.generic';
+            
+            // Add the ACTION block
+            aiResponse += `\n\n[ACTION]\n${JSON.stringify(actionData, null, 2)}\n[/ACTION]`;
+          } else if (functionResult.tip) {
+            // Handle quick_music_tip function
+            aiResponse = functionResult.message || functionResult.tip;
+            
+            if (functionResult.deep_link) {
+              aiResponse += `\n\n[ACTION]\n${JSON.stringify({
+                intent: 'chat.generic',
+                deep_link: functionResult.deep_link
+              }, null, 2)}\n[/ACTION]`;
+            }
+          } else if (functionResult.needs_clarification) {
+            // Handle identify_user_need function
+            aiResponse = functionResult.question;
+            if (functionResult.possible_actions && functionResult.possible_actions.length > 0) {
+              aiResponse += "\n\n" + functionResult.possible_actions.map((action: string, i: number) => 
+                `${i + 1}. ${action}`
+              ).join('\n');
+            }
+            
+            aiResponse += `\n\n[ACTION]\n${JSON.stringify({
+              intent: 'none',
+              entities: { possible_intents: functionResult.possible_actions }
+            }, null, 2)}\n[/ACTION]`;
+          }
+        } catch (error) {
+          console.error("Error handling function call:", error);
+        }
+      }
       
       // If we've hit the 3-message threshold, ensure the response includes a dashboard prompt
       if (sameTopicCount >= 2 && currentTopic && !aiResponse.includes('Loop dashboard')) {

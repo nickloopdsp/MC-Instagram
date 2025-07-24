@@ -127,44 +127,107 @@ export async function sendInstagramMessage(
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      rateLimiter.recordRequest();
-      
       const response = await axios.post(
-        `${INSTAGRAM_API_BASE}/me/messages`,
+        `https://graph.instagram.com/v21.0/me/messages`,
         payload,
         {
           headers: {
-            "Authorization": `Bearer ${pageAccessToken}`,
-            "Content-Type": "application/json"
+            'Authorization': `Bearer ${pageAccessToken}`,
+            'Content-Type': 'application/json',
           },
-          timeout: 10000, // 10 second timeout
+          timeout: 10000
         }
       );
-
-      console.log("Instagram message sent successfully:", response.data);
+      
+      console.log("✅ Message sent successfully:", response.data);
+      rateLimiter.recordRequest();
       return;
-    } catch (error) {
+      
+    } catch (error: any) {
       lastError = error;
-      console.error(`Instagram API attempt ${attempt}/${MAX_RETRIES} failed:`, error);
+      console.error(`❌ Attempt ${attempt} failed:`, {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
       
-      if (axios.isAxiosError(error)) {
-        console.error("Response data:", JSON.stringify(error.response?.data, null, 2));
-        console.error("Response status:", error.response?.status);
-        
-        // Don't retry on client errors (4xx)
-        if (error.response?.status && error.response.status >= 400 && error.response.status < 500) {
-          throw error;
-        }
-      }
-      
-      // Wait before retrying (exponential backoff)
       if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
+
+  // If we get here, all retries failed
+  console.error("💥 All retry attempts failed");
+  console.error("Full error details:", JSON.stringify(lastError, null, 2));
+  console.error("Error stack:", lastError.stack);
   
-  throw lastError;
+  if (lastError?.response?.data?.error) {
+    console.error("Instagram API Error Details:", lastError.response.data.error);
+  }
+  
+  throw new Error(`Failed to send Instagram message after ${MAX_RETRIES} attempts: ${lastError.message}`);
+}
+
+export async function sendTypingIndicator(
+  recipientId: string,
+  action: 'typing_on' | 'typing_off',
+  pageAccessToken: string
+): Promise<void> {
+  // Feature flag: if in debug mode, just log instead of sending
+  if (DEBUG_MODE) {
+    console.log("🚫 DEBUG MODE: Would send typing indicator:", {
+      recipientId,
+      action,
+    });
+    return;
+  }
+
+  // Rate limiting check
+  if (!rateLimiter.canMakeRequest()) {
+    console.warn("Rate limit exceeded, skipping typing indicator");
+    return;
+  }
+
+  const recipientIdStr = String(recipientId);
+  
+  console.log(`👨‍💻 Sending typing indicator (${action}):`, {
+    recipientId: recipientIdStr,
+  });
+  
+  const payload = {
+    recipient: { id: recipientIdStr },
+    sender_action: action
+  };
+
+  try {
+    const response = await axios.post(
+      `https://graph.instagram.com/v21.0/me/messages`,
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${pageAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 5000
+      }
+    );
+    
+    console.log(`✅ Typing indicator (${action}) sent successfully:`, response.data);
+    rateLimiter.recordRequest();
+    
+  } catch (error: any) {
+    console.error(`❌ Failed to send typing indicator (${action}):`, {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    
+    // Don't throw errors for typing indicators - they're not critical
+    // Just log the error and continue
+  }
 }
 
 export async function markMessageAsSeen(

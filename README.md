@@ -45,6 +45,30 @@ A guidance-focused Instagram DM bot that receives messages via Meta webhooks, pr
 - Merchandise and branding visual assessment
 - Social media content optimization suggestions
 
+### 🔧 **OpenAI Functions Integration (OPTIMIZED)**
+The bot now leverages OpenAI's function calling capabilities optimized for Instagram DM's routing-focused approach:
+
+**Core Philosophy**: "Guide, Don't Serve" - The DM bot routes users to their dashboard rather than serving detailed data.
+
+**Optimized Functions**:
+- **`save_to_moodboard`**: Quick save of inspiration with routing to moodboard
+- **`search_music_contacts`**: Initiates contact search with deep link to results
+- **`create_reminder_task`**: Creates tasks with routing to task management
+- **`quick_music_tip`**: Provides instant value with one actionable tip
+- **`identify_user_need`**: Clarifies unclear requests with multiple choice options
+
+**Key Benefits**:
+- Respects Instagram's 1000 character DM limit
+- Sub-second response times
+- Clear value separation (DM for routing, dashboard for detailed work)
+- Mobile-optimized experience
+
+**Example Interactions**:
+- "Save this reel" → "Got it! Saving to your moodboard 👉 [link]"
+- "Find producers in LA" → "I'll find LA producers for you! 👉 [link]"
+- "Remind me to submit to playlists" → "Reminder created! 👉 [link]"
+- "How are my stats?" → "I'll pull up your analytics! 📊 👉 [link]"
+
 ## 🤖 **Enhanced Intent Categories**
 
 ### `moodboard.add` - Visual Inspiration

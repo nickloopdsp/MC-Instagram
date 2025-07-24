@@ -103,6 +103,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               // Analyze URLs in the message text
               let urlAnalysis = "";
+              let extractedInstagramUrls: string[] = [];
+              let processedMessageText = messageText || "";
+              
               if (messageText) {
                 const urls = URLProcessor.extractURLs(messageText);
                 if (urls.length > 0) {
@@ -111,13 +114,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const instagramUrls = urls.filter(url => URLProcessor.isInstagramURL(url));
                   if (instagramUrls.length > 0) {
                     console.log(`Instagram URLs detected:`, instagramUrls);
+                    extractedInstagramUrls = instagramUrls;
                     urlAnalysis = ` [Contains ${instagramUrls.length} Instagram URL(s)]`;
                   }
                 }
               }
 
+              // Check for Instagram content in media attachments
+              // Instagram reels/posts shared via DM come as attachments with specific patterns
+              let instagramMediaContent = "";
+              for (const attachment of attachments) {
+                if (attachment.type === 'ig_reel' || attachment.type === 'video' || attachment.type === 'image') {
+                  // Instagram content often has a title with username pattern
+                  const title = attachment.payload?.title || attachment.title || '';
+                  const url = attachment.payload?.url;
+                  
+                  // Check if this is likely Instagram content based on the title pattern
+                  if (title && title.includes('@') && url) {
+                    console.log(`Detected Instagram media share: ${title}`);
+                    
+                    // Extract username from title if present
+                    const usernameMatch = title.match(/@(\w+)/);
+                    const username = usernameMatch ? usernameMatch[1] : null;
+                    
+                    // Create a synthetic Instagram content description
+                    instagramMediaContent = `Instagram ${attachment.type === 'ig_reel' ? 'Reel' : 'content'} shared: "${title}"`;
+                    
+                    // Add the media URL to be analyzed
+                    if (!processedMessageText || processedMessageText === '') {
+                      // If there's no text message, create one to describe the shared content
+                      processedMessageText = instagramMediaContent;
+                    }
+                  }
+                }
+              }
+
               // Prepare message content with media context
-              let fullMessage = messageText || "";
+              let fullMessage = processedMessageText || "";
               if (attachments.length > 0) {
                 const mediaDescription = mediaInfo.map((m: any) => 
                   `[${m.type.toUpperCase()}: ${m.title || m.url || 'media'}]`
@@ -153,9 +186,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Get conversation context for this user (now includes the message we just stored)
               const conversationContext = await storage.getConversationContext(senderId);
 
+              // Send typing indicator to show bot is processing
+              if (process.env.IG_PAGE_TOKEN) {
+                const { sendTypingIndicator } = await import("./services/instagram");
+                await sendTypingIndicator(senderId, 'typing_on', process.env.IG_PAGE_TOKEN);
+              }
+
               // Process message through mcBrain with conversation context and media info
-              const aiResponse = await mcBrain(messageText || "", conversationContext, mediaInfo);
+              const aiResponse = await mcBrain(processedMessageText || "", conversationContext, mediaInfo);
               console.log(`AI Response: ${aiResponse}`);
+
+              // Turn off typing indicator before sending response
+              if (process.env.IG_PAGE_TOKEN) {
+                const { sendTypingIndicator } = await import("./services/instagram");
+                await sendTypingIndicator(senderId, 'typing_off', process.env.IG_PAGE_TOKEN);
+              }
 
               // Parse ACTION block from AI response
               const actionMatch = aiResponse.match(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/);
