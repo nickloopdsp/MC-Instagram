@@ -24,8 +24,8 @@ The application follows a monorepo structure with a clear separation between cli
 - **Express.js Server**: Main application server handling API routes and webhook endpoints
 - **Instagram API Integration**: Handles webhook verification and message processing
 - **AI Service Integration**: Uses OpenAI GPT-4 for generating intelligent responses
-- **Database Layer**: Uses Drizzle ORM with PostgreSQL for data persistence
-- **In-Memory Storage**: Fallback storage implementation for development
+- **Database Layer**: Uses Drizzle ORM with PostgreSQL for data persistence (fully implemented)
+- **Webhook Event Storage**: All Instagram DM events are now persisted to PostgreSQL database
 
 ### Frontend Architecture
 - **React with TypeScript**: Modern React application using functional components

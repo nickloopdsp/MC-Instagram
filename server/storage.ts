@@ -1,7 +1,6 @@
-import { users, type User, type InsertUser, type WebhookEvent, type InsertWebhookEvent } from "@shared/schema";
-
-// modify the interface with any CRUD methods
-// you might need
+import { users, webhookEvents, type User, type InsertUser, type WebhookEvent, type InsertWebhookEvent } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -11,58 +10,48 @@ export interface IStorage {
   getRecentWebhookEvents(limit?: number): Promise<WebhookEvent[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private webhookEvents: Map<number, WebhookEvent>;
-  currentUserId: number;
-  currentEventId: number;
-
-  constructor() {
-    this.users = new Map();
-    this.webhookEvents = new Map();
-    this.currentUserId = 1;
-    this.currentEventId = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
     return user;
   }
 
   async createWebhookEvent(insertEvent: InsertWebhookEvent): Promise<WebhookEvent> {
-    const id = this.currentEventId++;
-    const event: WebhookEvent = { 
-      eventType: insertEvent.eventType,
-      senderId: insertEvent.senderId,
-      recipientId: insertEvent.recipientId,
-      messageText: insertEvent.messageText || null,
-      responseText: insertEvent.responseText || null,
-      status: insertEvent.status || "processed",
-      id, 
-      createdAt: new Date()
-    };
-    this.webhookEvents.set(id, event);
+    const [event] = await db
+      .insert(webhookEvents)
+      .values({
+        eventType: insertEvent.eventType,
+        senderId: insertEvent.senderId,
+        recipientId: insertEvent.recipientId,
+        messageText: insertEvent.messageText || null,
+        responseText: insertEvent.responseText || null,
+        status: insertEvent.status || "processed"
+      })
+      .returning();
     return event;
   }
 
   async getRecentWebhookEvents(limit: number = 50): Promise<WebhookEvent[]> {
-    const events = Array.from(this.webhookEvents.values())
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, limit);
+    const events = await db
+      .select()
+      .from(webhookEvents)
+      .orderBy(desc(webhookEvents.createdAt))
+      .limit(limit);
     return events;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
