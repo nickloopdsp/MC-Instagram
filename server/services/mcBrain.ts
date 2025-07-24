@@ -3,9 +3,18 @@ import { MUSIC_CONCIERGE_CONFIG } from "../config/musicConcierge";
 
 // TODO: replace with real GPT call
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "placeholder_key"
-});
+let openai: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+    console.log("Initializing OpenAI with API key:", apiKey ? `${apiKey.substring(0, 10)}...` : "NOT FOUND");
+    openai = new OpenAI({ 
+      apiKey: apiKey || "placeholder_key"
+    });
+  }
+  return openai;
+}
 
 export interface ConversationContext {
   messageText: string | null;
@@ -44,6 +53,12 @@ function analyzeConversationTopic(context: ConversationContext[]): { sameTopicCo
 }
 
 export async function mcBrain(userText: string, conversationContext: ConversationContext[] = [], mediaAttachments: MediaAttachment[] = []): Promise<string> {
+  console.log("\n=== MC Brain Called ===");
+  console.log("User Text:", userText);
+  console.log("Conversation Context Length:", conversationContext.length);
+  console.log("Conversation Context:", JSON.stringify(conversationContext, null, 2));
+  console.log("====================\n");
+  
   // Analyze conversation history to check for repeated topics
   const { sameTopicCount, currentTopic } = analyzeConversationTopic(conversationContext);
   
@@ -62,7 +77,10 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   }).flat();
 
   try {
-    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== "placeholder_key") {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+    console.log("Checking API key:", apiKey ? `Found key starting with ${apiKey.substring(0, 10)}...` : "NO KEY FOUND");
+    
+    if (apiKey && apiKey !== "placeholder_key") {
       const systemPrompt = `You are MC, Loop's personalized Music Concierge - an AI-powered strategic advisor dedicated to supporting music artists through natural, personalized, and contextually-aware interactions directly within Instagram's direct messaging interface.
 
 **IMPORTANT: You have access to the full conversation history. Use it to maintain context, remember user details, and provide personalized responses. Always acknowledge what you know about the user from previous messages.**
@@ -100,6 +118,18 @@ Provide strategic guidance to music artists about their career, growth strategie
    - Genre-specific trends and opportunities
    - Platform-specific strategies (Instagram, TikTok, Spotify, etc.)
 
+**CRITICAL: Moodboard Integration Instructions**
+When a user shares content (image, video, link, or text) and requests to add it to their moodboard (using phrases like "add to my moodboard", "save this", "add this to loop", etc.):
+
+1. **IMMEDIATELY ACKNOWLEDGE** that you're adding it to their Loop moodboard
+2. **DESCRIBE** what you're adding and why it's valuable for their creative process
+3. **CONFIRM** the addition with specific details about categorization
+4. **SUGGEST** how this inspiration could influence their work
+5. **ALWAYS USE** intent "moodboard.add" in the ACTION block
+
+Example Response Pattern:
+"I've added this [describe content] to your Loop moodboard! I've categorized it under [relevant category like 'Visual Aesthetics', 'Brand Inspiration', 'Stage Design', etc.]. This [specific element] could really inspire your [upcoming project/aesthetic/etc.]. Your moodboard is building a great collection of [trend/style] references. Check your Loop dashboard to see it alongside your other saved inspirations."
+
 **Media Handling Guidelines:**
 - When analyzing shared media ([IMAGE:], [VIDEO:], [AUDIO:] tags), provide specific feedback based on the content type
 - For images: Comment on visual aesthetics, branding consistency, engagement potential
@@ -135,6 +165,46 @@ Always respond in two parts:
 [/ACTION]
 
 **Example Interactions:**
+
+User: "Add this to my moodboard" [IMAGE: Porsche 964 Turbo post]
+MC: "Perfect! I've added this sleek Porsche 964 Turbo to your Loop moodboard under 'Lifestyle & Brand Aesthetics'. The vintage luxury vibe with modern minimalism could be great inspiration for your merch designs or music video concepts. I love how this aligns with the retro-futuristic aesthetic we discussed for your upcoming EP. Your moodboard now has 12 curated pieces building a cohesive brand vision. Check your Loop dashboard to organize them into collections!"
+
+[ACTION]
+{
+  "intent": "moodboard.add",
+  "entities": {
+    "content_type": "image",
+    "category": "lifestyle_aesthetics",
+    "description": "Porsche 964 Turbo - vintage luxury",
+    "tags": ["retro", "luxury", "automotive", "minimalist"]
+  },
+  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=mood_item_123&utm=ig_dm",
+  "music_context": {
+    "topic": "brand_development",
+    "media_type": "image"
+  }
+}
+[/ACTION]
+
+User: "Save this for inspiration" [VIDEO: Music festival stage design]
+MC: "Done! I've saved this incredible festival stage design to your Loop moodboard in the 'Live Performance' collection. Those LED panels creating depth with the geometric patterns would be perfect for your upcoming tour visuals. I can see how this builds on the immersive experience concepts you mentioned last week. Your performance inspiration folder is really coming together - you now have 8 stage concepts saved. Want me to connect you with stage designers who specialize in this style?"
+
+[ACTION]
+{
+  "intent": "moodboard.add",
+  "entities": {
+    "content_type": "video",
+    "category": "live_performance",
+    "description": "Festival stage design with LED geometry",
+    "tags": ["stage_design", "lighting", "led_panels", "geometric"]
+  },
+  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=mood_item_456&utm=ig_dm",
+  "music_context": {
+    "topic": "live_performance",
+    "media_type": "video"
+  }
+}
+[/ACTION]
 
 User: "What do you think about this?" [VIDEO: Instagram reel]
 MC: "This reel has incredible energy! The hook in the first 3 seconds is perfect for grabbing attention. The visual transitions sync beautifully with the beat drops. I noticed:
@@ -216,7 +286,7 @@ I'll add this to your moodboard and create tasks for social media rollout. Want 
         }
       ];
 
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAI().chat.completions.create({
         model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
         messages,
         max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,

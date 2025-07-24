@@ -182,6 +182,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             } catch (error) {
               console.error("Error processing message:", error);
+              console.error("Full error details:", JSON.stringify(error, null, 2));
+              console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
+              
               if (error && typeof error === 'object' && 'response' in error) {
                 const axiosError = error as any;
                 if (axiosError.response?.data) {
