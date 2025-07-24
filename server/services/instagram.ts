@@ -1,4 +1,5 @@
 import axios from "axios";
+import crypto from "crypto";
 
 const INSTAGRAM_API_BASE = "https://graph.facebook.com/v18.0";
 
@@ -17,6 +18,20 @@ export interface InstagramMessage {
     text: string;
     quick_replies?: QuickReply[];
   };
+}
+
+// Verify webhook signature
+export function verifyWebhookSignature(payload: string, signature: string, appSecret: string): boolean {
+  const expectedSignature = crypto
+    .createHmac("sha256", appSecret)
+    .update(payload, "utf8")
+    .digest("hex");
+  
+  const signatureHash = signature.replace("sha256=", "");
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature, "hex"),
+    Buffer.from(signatureHash, "hex")
+  );
 }
 
 export async function sendInstagramMessage(
@@ -66,18 +81,4 @@ export async function sendInstagramMessage(
   }
 }
 
-export function verifyWebhookSignature(body: string, signature: string, appSecret: string): boolean {
-  // TODO: Implement proper signature verification for production
-  // For now, we'll skip signature verification in development
-  if (process.env.NODE_ENV === "development") {
-    return true;
-  }
-  
-  const crypto = require("crypto");
-  const expectedSignature = crypto
-    .createHmac("sha256", appSecret)
-    .update(body)
-    .digest("hex");
-  
-  return `sha256=${expectedSignature}` === signature;
-}
+

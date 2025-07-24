@@ -98,8 +98,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             } catch (error) {
               console.error("Error processing message:", error);
-              if (error.response?.data) {
-                console.error("Instagram API Error Details:", JSON.stringify(error.response.data, null, 2));
+              if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as any;
+                if (axiosError.response?.data) {
+                  console.error("Instagram API Error Details:", JSON.stringify(axiosError.response.data, null, 2));
+                }
               }
               
               // Store the failed event
