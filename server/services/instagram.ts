@@ -39,9 +39,37 @@ export async function sendInstagramMessage(
   messageText: string,
   pageAccessToken: string
 ): Promise<void> {
-  // Format according to Instagram API specification
+  // Extract ACTION block if present and parse deep link
+  let cleanMessage = messageText;
+  let deepLink = null;
+  
+  const actionMatch = messageText.match(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/);
+  if (actionMatch) {
+    try {
+      const actionData = JSON.parse(actionMatch[1].trim());
+      deepLink = actionData.deep_link;
+      // Remove ACTION block from user-visible message
+      cleanMessage = messageText.replace(/\[ACTION\][\s\S]*?\[\/ACTION\]/, '').trim();
+    } catch (error) {
+      console.log("Could not parse ACTION block:", error);
+    }
+  }
+
+  // Create message with optional quick reply
+  const messageObj: any = { text: cleanMessage };
+  
+  // Add quick reply button if there's a deep link or default Loop dashboard
+  const dashboardUrl = deepLink || "https://loop.app/dashboard";
+  messageObj.quick_replies = [
+    {
+      content_type: "text",
+      title: "Open Loop Dashboard",
+      payload: dashboardUrl
+    }
+  ];
+
   const payload = {
-    message: JSON.stringify({ text: messageText }),
+    message: JSON.stringify(messageObj),
     recipient: JSON.stringify({ id: recipientId })
   };
 
