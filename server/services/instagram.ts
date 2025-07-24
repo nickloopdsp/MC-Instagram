@@ -58,8 +58,9 @@ export async function sendInstagramMessage(
   } catch (error) {
     console.error("Error sending Instagram message:", error);
     if (axios.isAxiosError(error)) {
-      console.error("Response data:", error.response?.data);
+      console.error("Response data:", JSON.stringify(error.response?.data, null, 2));
       console.error("Response status:", error.response?.status);
+      console.error("Response headers:", error.response?.headers);
     }
     throw error;
   }
