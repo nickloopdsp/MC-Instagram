@@ -109,9 +109,18 @@ export async function sendInstagramMessage(
     }
   ];
 
+  // Ensure recipientId is a string
+  const recipientIdStr = String(recipientId);
+  
+  console.log("📤 Sending Instagram message:", {
+    recipientId: recipientIdStr,
+    recipientIdType: typeof recipientIdStr,
+    messageLength: messageText.length
+  });
+  
   const payload = {
     message: messageObj,
-    recipient: { id: recipientId }
+    recipient: { id: recipientIdStr }
   };
 
   let lastError: any = null;

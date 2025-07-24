@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { mcBrain, type ConversationContext } from "./services/mcBrain";
 import { sendInstagramMessage, verifyWebhookSignature, markMessageAsSeen } from "./services/instagram";
 import { loopGuidance } from "./services/loopApi";
+import { URLProcessor } from "./services/urlProcessor";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // GET /webhook - Meta webhook verification
@@ -55,6 +56,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const messageText = messagingEvent.message?.text;
           const sourceMessageId = messagingEvent.message?.mid;
           
+          // Debug logging for ID formats
+          console.log("🔍 Webhook IDs:", {
+            senderId,
+            senderIdType: typeof senderId,
+            recipientId,
+            recipientIdType: typeof recipientId,
+            rawSender: messagingEvent.sender,
+            rawRecipient: messagingEvent.recipient
+          });
+          
           // Extract media attachments
           const attachments = messagingEvent.message?.attachments || [];
           const mediaInfo = attachments.map((attachment: any) => ({
@@ -90,6 +101,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               }
 
+              // Analyze URLs in the message text
+              let urlAnalysis = "";
+              if (messageText) {
+                const urls = URLProcessor.extractURLs(messageText);
+                if (urls.length > 0) {
+                  console.log(`Found ${urls.length} URL(s) in message:`, urls);
+                  
+                  const instagramUrls = urls.filter(url => URLProcessor.isInstagramURL(url));
+                  if (instagramUrls.length > 0) {
+                    console.log(`Instagram URLs detected:`, instagramUrls);
+                    urlAnalysis = ` [Contains ${instagramUrls.length} Instagram URL(s)]`;
+                  }
+                }
+              }
+
               // Prepare message content with media context
               let fullMessage = messageText || "";
               if (attachments.length > 0) {
@@ -97,6 +123,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   `[${m.type.toUpperCase()}: ${m.title || m.url || 'media'}]`
                 ).join(' ');
                 fullMessage = fullMessage ? `${fullMessage} ${mediaDescription}` : mediaDescription;
+              }
+
+              // Add URL analysis to the full message for logging
+              if (urlAnalysis) {
+                fullMessage += urlAnalysis;
               }
               
               console.log(`Received message from ${senderId}: ${fullMessage}`);
@@ -123,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const conversationContext = await storage.getConversationContext(senderId);
 
               // Process message through mcBrain with conversation context and media info
-              const aiResponse = await mcBrain(fullMessage, conversationContext, mediaInfo);
+              const aiResponse = await mcBrain(messageText || "", conversationContext, mediaInfo);
               console.log(`AI Response: ${aiResponse}`);
 
               // Parse ACTION block from AI response

@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import { MUSIC_CONCIERGE_CONFIG } from "../config/musicConcierge";
+import { URLProcessor, type ExtractedContent } from "./urlProcessor";
+import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysis";
 
 // TODO: replace with real GPT call
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -59,6 +61,62 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   console.log("Conversation Context:", JSON.stringify(conversationContext, null, 2));
   console.log("====================\n");
   
+  // Process URLs in the message
+  let extractedContent: ExtractedContent[] = [];
+  if (userText) {
+    try {
+      extractedContent = await URLProcessor.processMessageURLs(userText);
+      if (extractedContent.length > 0) {
+        console.log("Extracted content from URLs:", JSON.stringify(extractedContent, null, 2));
+      }
+    } catch (error) {
+      console.error("Error processing URLs:", error);
+    }
+  }
+
+  // Analyze images if any are provided (including from Instagram posts)
+  let imageAnalysis: ImageAnalysisResult[] = [];
+  const imageAttachments = mediaAttachments.filter(attachment => 
+    attachment.type === 'image' && attachment.url
+  );
+  
+  // Also collect images from Instagram posts
+  const instagramImages: Array<{url: string, context?: string}> = [];
+  for (const content of extractedContent) {
+    if (content.type.startsWith('instagram_') && content.mediaUrls && !content.isVideo) {
+      content.mediaUrls.forEach(url => {
+        instagramImages.push({
+          url,
+          context: content.description || content.title || 'Instagram post image'
+        });
+      });
+    }
+  }
+  
+  // Combine all images for analysis
+  const allImages = [
+    ...imageAttachments.map(a => ({ url: a.url!, context: a.title || userText })),
+    ...instagramImages
+  ];
+  
+  if (allImages.length > 0) {
+    console.log(`Analyzing ${allImages.length} image(s) (${imageAttachments.length} attachments, ${instagramImages.length} from Instagram)...`);
+    try {
+      for (const image of allImages) {
+        if (image.url) {
+          const analysis = await VisionAnalysisService.analyzeImage(
+            image.url, 
+            image.context || userText // Provide context
+          );
+          imageAnalysis.push(analysis);
+        }
+      }
+      console.log("Image analysis completed:", JSON.stringify(imageAnalysis, null, 2));
+    } catch (error) {
+      console.error("Error analyzing images:", error);
+    }
+  }
+  
   // Analyze conversation history to check for repeated topics
   const { sameTopicCount, currentTopic } = analyzeConversationTopic(conversationContext);
   
@@ -100,11 +158,23 @@ Provide strategic guidance to music artists about their career, growth strategie
 
 1. **Content Analysis:**
    - Analyze text, images, audio snippets, video content, and social media links shared by artists
-   - When users share Instagram posts/reels (indicated by [IMAGE:], [VIDEO:], [AUDIO:] tags), analyze the content contextually
-   - Offer meaningful feedback on style, fan engagement potential, and marketing opportunities
+   - When users share Instagram posts/reels, acknowledge the content even if you can't access it directly
+   - Offer meaningful feedback on style, fan engagement potential, and marketing opportunities based on context
    - Identify trends and alignment with current music industry movements
 
-2. **Strategic Recommendations:**
+2. **Instagram Content Handling:**
+   - When users share Instagram URLs (posts, reels, stories), acknowledge them specifically
+   - Explain that while you can't access the content directly due to platform restrictions, you can still provide valuable guidance
+   - Offer to help with analysis if they describe the content or share it as an image attachment
+   - Focus on actionable advice based on what they tell you about the content
+
+3. **Image Analysis:**
+   - When users share images directly, provide detailed visual analysis
+   - Comment on aesthetics, branding, composition, and marketing potential
+   - Connect visual elements to music career development opportunities
+   - Suggest specific improvements or applications for the content
+
+4. **Strategic Recommendations:**
    - Growth strategies tailored to the artist's genre and current position
    - Fan engagement tactics and community building
    - Touring and live performance planning
@@ -113,7 +183,7 @@ Provide strategic guidance to music artists about their career, growth strategie
    - Collaboration suggestions with other artists
    - Playlist placement strategies
 
-3. **Industry Insights:**
+5. **Industry Insights:**
    - Local scene analysis (venues, promoters, influential figures)
    - Genre-specific trends and opportunities
    - Platform-specific strategies (Instagram, TikTok, Spotify, etc.)
@@ -127,15 +197,19 @@ When a user shares content (image, video, link, or text) and requests to add it 
 4. **SUGGEST** how this inspiration could influence their work
 5. **ALWAYS USE** intent "moodboard.add" in the ACTION block
 
-Example Response Pattern:
-"I've added this [describe content] to your Loop moodboard! I've categorized it under [relevant category like 'Visual Aesthetics', 'Brand Inspiration', 'Stage Design', etc.]. This [specific element] could really inspire your [upcoming project/aesthetic/etc.]. Your moodboard is building a great collection of [trend/style] references. Check your Loop dashboard to see it alongside your other saved inspirations."
-
 **Media Handling Guidelines:**
 - When analyzing shared media ([IMAGE:], [VIDEO:], [AUDIO:] tags), provide specific feedback based on the content type
 - For images: Comment on visual aesthetics, branding consistency, engagement potential
 - For videos/reels: Analyze hook effectiveness, audio quality, trend alignment, shareability
 - For audio: Evaluate production quality, genre fit, commercial potential
+- For Instagram URLs: Acknowledge the specific type of content and offer contextual guidance
 - Always connect media analysis to actionable career advice
+
+**Instagram URL Response Pattern:**
+When users share Instagram URLs, respond like this:
+"I can see you've shared [an Instagram post/reel/story]. While I can't access the content directly due to Instagram's platform restrictions, I'd love to help you analyze it! If you can describe what's in the [post/reel/story] or share it as an image, I can provide specific feedback on [visual aesthetics/performance quality/engagement strategy/etc.]. 
+
+For now, I'll save this to your moodboard as inspiration. Feel free to tell me what caught your eye about this content, and I can offer more targeted advice for your music career."
 
 **Integration with Loop Dashboard:**
 When providing recommendations, naturally guide users to their Loop dashboard for:
@@ -159,119 +233,64 @@ Always respond in two parts:
     "topic": "<e.g., songwriting, promotion, touring, collaboration>",
     "genre": "<if mentioned>",
     "location": "<if mentioned>",
-    "media_type": "<if media shared: image | video | audio | link>"
-  }
-}
-[/ACTION]
-
-**Example Interactions:**
-
-User: "Add this to my moodboard" [IMAGE: Porsche 964 Turbo post]
-MC: "Perfect! I've added this sleek Porsche 964 Turbo to your Loop moodboard under 'Lifestyle & Brand Aesthetics'. The vintage luxury vibe with modern minimalism could be great inspiration for your merch designs or music video concepts. I love how this aligns with the retro-futuristic aesthetic we discussed for your upcoming EP. Your moodboard now has 12 curated pieces building a cohesive brand vision. Check your Loop dashboard to organize them into collections!"
-
-[ACTION]
-{
-  "intent": "moodboard.add",
-  "entities": {
-    "content_type": "image",
-    "category": "lifestyle_aesthetics",
-    "description": "Porsche 964 Turbo - vintage luxury",
-    "tags": ["retro", "luxury", "automotive", "minimalist"]
-  },
-  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=mood_item_123&utm=ig_dm",
-  "music_context": {
-    "topic": "brand_development",
-    "media_type": "image"
-  }
-}
-[/ACTION]
-
-User: "Save this for inspiration" [VIDEO: Music festival stage design]
-MC: "Done! I've saved this incredible festival stage design to your Loop moodboard in the 'Live Performance' collection. Those LED panels creating depth with the geometric patterns would be perfect for your upcoming tour visuals. I can see how this builds on the immersive experience concepts you mentioned last week. Your performance inspiration folder is really coming together - you now have 8 stage concepts saved. Want me to connect you with stage designers who specialize in this style?"
-
-[ACTION]
-{
-  "intent": "moodboard.add",
-  "entities": {
-    "content_type": "video",
-    "category": "live_performance",
-    "description": "Festival stage design with LED geometry",
-    "tags": ["stage_design", "lighting", "led_panels", "geometric"]
-  },
-  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=mood_item_456&utm=ig_dm",
-  "music_context": {
-    "topic": "live_performance",
-    "media_type": "video"
-  }
-}
-[/ACTION]
-
-User: "What do you think about this?" [VIDEO: Instagram reel]
-MC: "This reel has incredible energy! The hook in the first 3 seconds is perfect for grabbing attention. The visual transitions sync beautifully with the beat drops. I noticed:
-1. Your aesthetic is consistent with current indie-electronic trends
-2. The 15-second format is ideal for TikTok cross-posting
-3. The caption opportunity could drive more engagement
-
-Let me save this to your moodboard and create a content strategy around this style. Your Loop dashboard now has a detailed breakdown of similar successful reels in your genre."
-
-[ACTION]
-{
-  "intent": "content.analyze",
-  "entities": {
-    "content_type": "video",
-    "platform": "instagram",
-    "feedback": "positive",
-    "recommendations": ["tiktok_crosspost", "engagement_strategy", "aesthetic_consistency"]
-  },
-  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=reel_456&utm=ig_dm",
-  "music_context": {
-    "topic": "promotion",
-    "genre": "indie-electronic",
-    "media_type": "video"
-  }
-}
-[/ACTION]
-
-User: "Check out this poster design for my upcoming show" [IMAGE: concert poster]
-MC: "Love the bold typography and color scheme! This definitely stands out. The venue/date hierarchy is clear, and the QR code for tickets is smart. A few quick thoughts:
-1. The aesthetic matches your recent singles perfectly
-2. Consider creating story-sized versions for easier sharing
-3. This style would work great for merch designs too
-
-I'll add this to your moodboard and create tasks for social media rollout. Want me to suggest local influencers who could help spread the word?"
-
-[ACTION]
-{
-  "intent": "content.analyze",
-  "entities": {
-    "content_type": "image",
-    "purpose": "show_promotion",
-    "feedback": "positive",
-    "recommendations": ["social_media_versions", "influencer_outreach", "merch_opportunity"]
-  },
-  "deep_link": "https://app.loop.com/open?widget=moodboard&target_id=poster_789&utm=ig_dm",
-  "music_context": {
-    "topic": "live_performance",
-    "media_type": "image"
+    "media_type": "<if media shared: image | video | audio | link | instagram_url>"
   }
 }
 [/ACTION]
 
 **Important Guidelines:**
-- Never invent specific contacts or opportunities - base recommendations on actual data
-- When analyzing media, be specific and actionable in feedback
-- Balance immediate actionable advice with dashboard referrals
-- After 3 consecutive messages on the same topic, gently suggest continuing on Loop dashboard
+- You CAN analyze Instagram content! When users share Instagram posts/reels/stories, you'll receive the caption, description, and can analyze any images
+- Proactively analyze shared Instagram content without asking for descriptions
+- Be specific about what you see in the Instagram content and provide actionable feedback
+- When users share Instagram URLs, default to moodboard.add intent unless they ask for something else
 - Always maintain focus on the artist's career growth and creative journey
-- Adapt tone based on genre (e.g., more formal for classical, casual for indie)`;
+- Adapt tone based on genre (e.g., more formal for classical, casual for indie)
+- If Instagram content extraction fails, gracefully offer to help if they describe the content`;
 
-      // Prepare user message with media context
+      // Prepare user message with media context and URL information
       let userMessage = userText;
+      
+      // Add media attachment context
       if (mediaAttachments.length > 0) {
         const mediaContext = `\n\n[User has shared ${mediaAttachments.length} media attachment(s): ${
           mediaAttachments.map(m => `${m.type}${m.title ? ` - "${m.title}"` : ''}`).join(', ')
         }]`;
         userMessage += mediaContext;
+      }
+
+      // Add extracted URL content context
+      if (extractedContent.length > 0) {
+        let urlContext = '\n\n[Extracted Content from URLs:';
+        
+        for (const content of extractedContent) {
+          if (content.type.startsWith('instagram_')) {
+            urlContext += `\n- Instagram ${content.type.replace('instagram_', '').replace('_', ' ')}:`;
+            urlContext += `\n  URL: ${content.url}`;
+            if (content.postId) urlContext += `\n  Post ID: ${content.postId}`;
+            if (content.title) urlContext += `\n  Title: ${content.title}`;
+            if (content.description) urlContext += `\n  Caption/Description: ${content.description}`;
+            if (content.mediaUrls && content.mediaUrls.length > 0) {
+              urlContext += `\n  Media: ${content.mediaUrls.length} ${content.isVideo ? 'video(s)' : 'image(s)'} available for analysis`;
+            }
+            if (content.error) urlContext += `\n  Note: ${content.error}`;
+          } else {
+            urlContext += `\n- ${content.type}: ${content.url}`;
+            if (content.title) urlContext += ` - ${content.title}`;
+          }
+        }
+        
+        urlContext += ']';
+        userMessage += urlContext;
+      }
+
+      // Add image analysis context
+      if (imageAnalysis.length > 0) {
+        const analysisContext = `\n\n[Image Analysis Results: ${
+          imageAnalysis.map((analysis, index) => 
+            `Image ${index + 1}: ${analysis.description.substring(0, 100)}${analysis.description.length > 100 ? '...' : ''}`
+          ).join(' | ')
+        }]`;
+        userMessage += analysisContext;
       }
 
       const messages: Array<{role: "system" | "user" | "assistant", content: string}> = [
@@ -326,6 +345,17 @@ I'll add this to your moodboard and create tasks for social media rollout. Want 
       if (mediaAttachments.length > 0) {
         const mediaTypes = mediaAttachments.map(m => m.type).join(', ');
         response += `I see you've shared ${mediaAttachments.length} ${mediaTypes} file(s). `;
+      }
+
+      if (extractedContent.length > 0) {
+        const instagramUrls = extractedContent.filter(c => c.type.startsWith('instagram_'));
+        if (instagramUrls.length > 0) {
+          response += `I also noticed you shared ${instagramUrls.length} Instagram ${instagramUrls.length === 1 ? 'link' : 'links'}. `;
+        }
+      }
+
+      if (imageAnalysis.length > 0) {
+        response += `I can see ${imageAnalysis.length} image(s) but need OpenAI configuration to analyze them. `;
       }
       
       response += "I'm processing this through my AI brain and here's my response. This is currently a stub - will be replaced with GPT-4 integration soon!";
