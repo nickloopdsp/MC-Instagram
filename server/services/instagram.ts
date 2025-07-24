@@ -56,9 +56,12 @@ export async function sendInstagramMessage(
   };
 
   try {
+    // For Instagram messaging, we need to use the specific endpoint format
     const response = await axios.post(
-      `${INSTAGRAM_API_BASE}/me/messages`,
-      message,
+      `${INSTAGRAM_API_BASE}/${recipientId}/messages`,
+      {
+        message: message.message
+      },
       {
         params: {
           access_token: pageAccessToken
