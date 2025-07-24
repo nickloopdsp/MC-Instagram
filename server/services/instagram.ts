@@ -110,8 +110,8 @@ export async function sendInstagramMessage(
   ];
 
   const payload = {
-    message: JSON.stringify(messageObj),
-    recipient: JSON.stringify({ id: recipientId })
+    message: messageObj,
+    recipient: { id: recipientId }
   };
 
   let lastError: any = null;
@@ -177,7 +177,7 @@ export async function markMessageAsSeen(
   }
 
   const payload = {
-    recipient: JSON.stringify({ id: recipientId }),
+    recipient: { id: recipientId },
     sender_action: "mark_seen"
   };
 
