@@ -56,10 +56,9 @@ export async function sendInstagramMessage(
   };
 
   try {
-    // Use the Instagram Business Account ID for messaging
-    const INSTAGRAM_BUSINESS_ACCOUNT_ID = "17841445032686148";
+    // Try with Page messaging endpoint first (works with Page Access Tokens)
     const response = await axios.post(
-      `${INSTAGRAM_API_BASE}/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/messages`,
+      `${INSTAGRAM_API_BASE}/me/messages`,
       message,
       {
         params: {
