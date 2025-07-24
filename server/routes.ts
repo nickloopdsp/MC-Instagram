@@ -36,21 +36,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("Body:", JSON.stringify(body, null, 2));
     console.log("========================");
 
-    // Verify the webhook signature (optional but recommended for production)
+    // Temporarily disable signature verification for debugging
     const signature = req.get("X-Hub-Signature-256");
-    if (signature && process.env.IG_APP_SECRET) {
-      const payload = req.body;
-      const isValid = verifyWebhookSignature(
-        JSON.stringify(payload),
-        signature,
-        process.env.IG_APP_SECRET
-      );
-      if (!isValid) {
-        console.log("Invalid webhook signature - continuing anyway for debugging");
-        // Don't reject during debugging
-        // return res.sendStatus(403);
-      }
-    }
+    console.log("Signature received:", signature);
+    
+    // Process all messages for now to debug the real message issue
+    // TODO: Re-enable signature verification in production
 
     if (body.object === "instagram") {
       // Loop through each entry
