@@ -103,3 +103,12 @@ Required environment variables:
 - Static file serving for the React application
 
 The application is designed to be deployed on platforms that support Node.js with PostgreSQL databases, such as Railway, Vercel, or similar cloud platforms.
+
+## Recent Changes
+
+**July 24, 2025:**
+- ✅ **Instagram DM Bot Fully Functional**: Bot successfully processes test messages, generates AI responses via GPT-4, and sends responses through Instagram API
+- ✅ **Instagram API Integration Complete**: Using correct graph.instagram.com/v21.0/me/messages endpoint with Instagram User Access Token format
+- ✅ **Message Flow Confirmed**: Bot receives webhook events, processes through OpenAI, sends responses with successful message_id confirmations
+- ✅ **Meta Developer Console Configured**: User has properly configured webhooks and generated personal Instagram token
+- **Status**: Bot ready for live Instagram DM testing with proper webhook configuration
