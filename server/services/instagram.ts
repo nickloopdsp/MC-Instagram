@@ -1,7 +1,7 @@
 import axios from "axios";
 import crypto from "crypto";
 
-const INSTAGRAM_API_BASE = "https://graph.facebook.com/v18.0";
+const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
 
 export interface QuickReply {
   content_type: "text";
@@ -39,32 +39,19 @@ export async function sendInstagramMessage(
   messageText: string,
   pageAccessToken: string
 ): Promise<void> {
-  const message: InstagramMessage = {
-    recipient: {
-      id: recipientId
-    },
-    message: {
-      text: messageText,
-      quick_replies: [
-        {
-          content_type: "text",
-          title: "Open Loop Dashboard",
-          payload: "https://loop.app/dashboard"
-        }
-      ]
-    }
+  // Format according to Instagram API specification
+  const payload = {
+    message: JSON.stringify({ text: messageText }),
+    recipient: JSON.stringify({ id: recipientId })
   };
 
   try {
-    // Try with Page messaging endpoint first (works with Page Access Tokens)
     const response = await axios.post(
       `${INSTAGRAM_API_BASE}/me/messages`,
-      message,
+      payload,
       {
-        params: {
-          access_token: pageAccessToken
-        },
         headers: {
+          "Authorization": `Bearer ${pageAccessToken}`,
           "Content-Type": "application/json"
         }
       }
