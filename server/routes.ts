@@ -29,6 +29,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /webhook - Receive Instagram DM events
   app.post("/webhook", async (req: Request, res: Response) => {
     const body = req.body;
+    
+    // Log all incoming webhook data for debugging
+    console.log("=== WEBHOOK RECEIVED ===");
+    console.log("Headers:", JSON.stringify(req.headers, null, 2));
+    console.log("Body:", JSON.stringify(body, null, 2));
+    console.log("========================");
 
     // Verify the webhook signature (optional but recommended for production)
     const signature = req.get("X-Hub-Signature-256");
