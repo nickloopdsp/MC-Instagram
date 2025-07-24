@@ -9,6 +9,8 @@ export interface IStorage {
   createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent>;
   getRecentWebhookEvents(limit?: number): Promise<WebhookEvent[]>;
   updateWebhookEventDeepLinkClicked(eventId: number): Promise<void>;
+  getRecentUserMessages(senderId: string, limit?: number): Promise<WebhookEvent[]>;
+  getConversationContext(senderId: string, limit?: number): Promise<Array<{messageText: string | null, responseText: string | null, intent: string | null}>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -64,6 +66,32 @@ export class DatabaseStorage implements IStorage {
       .update(webhookEvents)
       .set({ deepLinkClicked: true })
       .where(eq(webhookEvents.id, eventId));
+  }
+
+  async getRecentUserMessages(senderId: string, limit: number = 10): Promise<WebhookEvent[]> {
+    const events = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.senderId, senderId))
+      .orderBy(desc(webhookEvents.createdAt))
+      .limit(limit);
+    return events;
+  }
+
+  async getConversationContext(senderId: string, limit: number = 6): Promise<Array<{messageText: string | null, responseText: string | null, intent: string | null}>> {
+    const events = await db
+      .select({
+        messageText: webhookEvents.messageText,
+        responseText: webhookEvents.responseText,
+        intent: webhookEvents.intent
+      })
+      .from(webhookEvents)
+      .where(eq(webhookEvents.senderId, senderId))
+      .orderBy(desc(webhookEvents.createdAt))
+      .limit(limit);
+    
+    // Return in chronological order for context
+    return events.reverse();
   }
 }
 

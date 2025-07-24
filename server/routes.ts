@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { mcBrain } from "./services/mcBrain";
+import { mcBrain, type ConversationContext } from "./services/mcBrain";
 import { sendInstagramMessage, verifyWebhookSignature } from "./services/instagram";
 import { loopGuidance } from "./services/loopApi";
 
@@ -86,8 +86,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 attachments: []
               });
 
-              // Process message through mcBrain
-              const aiResponse = await mcBrain(messageText);
+              // Get conversation context for this user
+              const conversationContext = await storage.getConversationContext(senderId);
+
+              // Process message through mcBrain with conversation context
+              const aiResponse = await mcBrain(messageText, conversationContext);
               console.log(`AI Response: ${aiResponse}`);
 
               // Parse ACTION block from AI response
