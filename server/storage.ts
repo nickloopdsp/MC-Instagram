@@ -8,6 +8,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent>;
   getRecentWebhookEvents(limit?: number): Promise<WebhookEvent[]>;
+  updateWebhookEventDeepLinkClicked(eventId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -38,7 +39,12 @@ export class DatabaseStorage implements IStorage {
         recipientId: insertEvent.recipientId,
         messageText: insertEvent.messageText || null,
         responseText: insertEvent.responseText || null,
-        status: insertEvent.status || "processed"
+        status: insertEvent.status || "processed",
+        intent: insertEvent.intent || null,
+        entities: insertEvent.entities || null,
+        deepLink: insertEvent.deepLink || null,
+        latencyMs: insertEvent.latencyMs || null,
+        deepLinkClicked: insertEvent.deepLinkClicked || false,
       })
       .returning();
     return event;
@@ -51,6 +57,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(webhookEvents.createdAt))
       .limit(limit);
     return events;
+  }
+
+  async updateWebhookEventDeepLinkClicked(eventId: number): Promise<void> {
+    await db
+      .update(webhookEvents)
+      .set({ deepLinkClicked: true })
+      .where(eq(webhookEvents.id, eventId));
   }
 }
 

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,6 +16,12 @@ export const webhookEvents = pgTable("webhook_events", {
   messageText: text("message_text"),
   responseText: text("response_text"),
   status: text("status").notNull().default("processed"), // processed, failed, sent
+  // Analytics fields
+  intent: text("intent"), // moodboard.add, network.suggest, task.create, chat.generic, none
+  entities: jsonb("entities"), // JSON of extracted entities
+  deepLink: text("deep_link"), // Generated deep link
+  latencyMs: integer("latency_ms"), // Processing time in milliseconds
+  deepLinkClicked: boolean("deep_link_clicked").default(false), // Track if user clicked the link
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -31,6 +37,11 @@ export const insertWebhookEventSchema = createInsertSchema(webhookEvents).pick({
   messageText: true,
   responseText: true,
   status: true,
+  intent: true,
+  entities: true,
+  deepLink: true,
+  latencyMs: true,
+  deepLinkClicked: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

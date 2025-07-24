@@ -43,7 +43,7 @@ Always respond in two parts:
 {
   "intent": "<one_of: moodboard.add | network.suggest | task.create | chat.generic | none>",
   "entities": { ... },
-  "deep_link": "https://loop.app/dashboard?widget=<slug>&target_id=<id>&utm=ig_dm" | null
+  "deep_link": "https://app.loop.com/open?widget=<slug>&target_id=<id>&utm=ig_dm" | null
 }
 [/ACTION]
 

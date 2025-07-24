@@ -2,6 +2,9 @@ import axios from "axios";
 import crypto from "crypto";
 
 const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
+const DEBUG_MODE = process.env.DEBUG_MODE === "true";
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 export interface QuickReply {
   content_type: "text";
@@ -20,6 +23,25 @@ export interface InstagramMessage {
   };
 }
 
+// Rate limiting helper
+class RateLimiter {
+  private requests: number[] = [];
+  private readonly maxRequests: number = 600; // Instagram limit per hour
+  private readonly windowMs: number = 60 * 60 * 1000; // 1 hour
+
+  canMakeRequest(): boolean {
+    const now = Date.now();
+    this.requests = this.requests.filter(time => now - time < this.windowMs);
+    return this.requests.length < this.maxRequests;
+  }
+
+  recordRequest(): void {
+    this.requests.push(Date.now());
+  }
+}
+
+const rateLimiter = new RateLimiter();
+
 // Verify webhook signature
 export function verifyWebhookSignature(payload: string, signature: string, appSecret: string): boolean {
   const expectedSignature = crypto
@@ -34,11 +56,30 @@ export function verifyWebhookSignature(payload: string, signature: string, appSe
   );
 }
 
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function sendInstagramMessage(
   recipientId: string,
   messageText: string,
   pageAccessToken: string
 ): Promise<void> {
+  // Feature flag: if in debug mode, just log instead of sending
+  if (DEBUG_MODE) {
+    console.log("🚫 DEBUG MODE: Would send Instagram message:", {
+      recipientId,
+      messageText: messageText.substring(0, 100) + "...",
+    });
+    return;
+  }
+
+  // Rate limiting check
+  if (!rateLimiter.canMakeRequest()) {
+    console.warn("Rate limit exceeded, skipping message send");
+    throw new Error("Rate limit exceeded");
+  }
+
   // Extract ACTION block if present and parse deep link
   let cleanMessage = messageText;
   let deepLink = null;
@@ -59,7 +100,7 @@ export async function sendInstagramMessage(
   const messageObj: any = { text: cleanMessage };
   
   // Add quick reply button if there's a deep link or default Loop dashboard
-  const dashboardUrl = deepLink || "https://loop.app/dashboard";
+  const dashboardUrl = deepLink || "https://app.loop.com/open?utm=ig_dm";
   messageObj.quick_replies = [
     {
       content_type: "text",
@@ -73,28 +114,48 @@ export async function sendInstagramMessage(
     recipient: JSON.stringify({ id: recipientId })
   };
 
-  try {
-    const response = await axios.post(
-      `${INSTAGRAM_API_BASE}/me/messages`,
-      payload,
-      {
-        headers: {
-          "Authorization": `Bearer ${pageAccessToken}`,
-          "Content-Type": "application/json"
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      rateLimiter.recordRequest();
+      
+      const response = await axios.post(
+        `${INSTAGRAM_API_BASE}/me/messages`,
+        payload,
+        {
+          headers: {
+            "Authorization": `Bearer ${pageAccessToken}`,
+            "Content-Type": "application/json"
+          },
+          timeout: 10000, // 10 second timeout
+        }
+      );
+
+      console.log("Instagram message sent successfully:", response.data);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(`Instagram API attempt ${attempt}/${MAX_RETRIES} failed:`, error);
+      
+      if (axios.isAxiosError(error)) {
+        console.error("Response data:", JSON.stringify(error.response?.data, null, 2));
+        console.error("Response status:", error.response?.status);
+        
+        // Don't retry on client errors (4xx)
+        if (error.response?.status && error.response.status >= 400 && error.response.status < 500) {
+          throw error;
         }
       }
-    );
-
-    console.log("Instagram message sent successfully:", response.data);
-  } catch (error) {
-    console.error("Error sending Instagram message:", error);
-    if (axios.isAxiosError(error)) {
-      console.error("Response data:", JSON.stringify(error.response?.data, null, 2));
-      console.error("Response status:", error.response?.status);
-      console.error("Response headers:", error.response?.headers);
+      
+      // Wait before retrying (exponential backoff)
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
+      }
     }
-    throw error;
   }
+  
+  throw lastError;
 }
 
 

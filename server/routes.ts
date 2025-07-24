@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { mcBrain } from "./services/mcBrain";
 import { sendInstagramMessage, verifyWebhookSignature } from "./services/instagram";
+import { loopGuidance } from "./services/loopApi";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // GET /webhook - Meta webhook verification
@@ -28,6 +29,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // POST /webhook - Receive Instagram DM events
   app.post("/webhook", async (req: Request, res: Response) => {
+    const startTime = Date.now();
     const body = req.body;
     
     // Log all incoming webhook data for debugging
@@ -51,6 +53,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const senderId = messagingEvent.sender?.id;
           const recipientId = messagingEvent.recipient?.id;
           const messageText = messagingEvent.message?.text;
+          const sourceMessageId = messagingEvent.message?.mid;
 
           // Skip echo messages (messages sent by the bot itself)
           if (messagingEvent.message?.is_echo) {
@@ -59,6 +62,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           if (senderId && messageText) {
+            let intent = null;
+            let entities = null;
+            let deepLink = null;
+            
             try {
               console.log(`Received message from ${senderId}: ${messageText}`);
 
@@ -71,26 +78,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 status: "processed"
               });
 
+              // Log chat message for MC mirroring (future Loop integration)
+              await loopGuidance.logChatMessage(senderId, {
+                source: "instagram_dm",
+                source_msg_id: sourceMessageId || null,
+                text: messageText,
+                attachments: []
+              });
+
               // Process message through mcBrain
               const aiResponse = await mcBrain(messageText);
               console.log(`AI Response: ${aiResponse}`);
+
+              // Parse ACTION block from AI response
+              const actionMatch = aiResponse.match(/\[ACTION\]([\s\S]*?)\[\/ACTION\]/);
+              if (actionMatch) {
+                try {
+                  const actionData = JSON.parse(actionMatch[1].trim());
+                  intent = actionData.intent;
+                  entities = actionData.entities;
+                  
+                  // Process the intent for guidance (no actual mutations)
+                  if (intent && intent !== 'chat.generic') {
+                    const guidance = await loopGuidance.processIntent(intent, entities);
+                    deepLink = guidance.deep_link;
+                    console.log(`Generated guidance for ${intent}: ${guidance.guidance_message}`);
+                  }
+                } catch (error) {
+                  console.error("Error parsing ACTION block:", error);
+                }
+              }
 
               // Send response back via Instagram API
               const pageAccessToken = process.env.IG_PAGE_TOKEN;
               if (pageAccessToken) {
                 await sendInstagramMessage(senderId, aiResponse, pageAccessToken);
 
-                // Store the response event
+                const latencyMs = Date.now() - startTime;
+
+                // Store the response event with analytics
                 await storage.createWebhookEvent({
                   eventType: "message_sent",
                   senderId: recipientId || "bot",
                   recipientId: senderId,
                   messageText: aiResponse,
                   responseText: aiResponse,
-                  status: "sent"
+                  status: "sent",
+                  intent,
+                  entities,
+                  deepLink,
+                  latencyMs
                 });
 
-                console.log(`Response sent to ${senderId}`);
+                console.log(`Response sent to ${senderId} (${latencyMs}ms)`);
               } else {
                 console.error("IG_PAGE_TOKEN not configured");
                 await storage.createWebhookEvent({
@@ -98,7 +138,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   senderId: recipientId || "bot",
                   recipientId: senderId,
                   messageText: aiResponse,
-                  status: "failed"
+                  status: "failed",
+                  intent,
+                  entities,
+                  deepLink,
+                  latencyMs: Date.now() - startTime
                 });
               }
             } catch (error) {
@@ -116,7 +160,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 senderId: recipientId || "bot",
                 recipientId: senderId,
                 messageText: `Error processing: ${messageText}`,
-                status: "failed"
+                status: "failed",
+                intent,
+                entities,
+                deepLink,
+                latencyMs: Date.now() - startTime
               });
             }
           }
@@ -125,6 +173,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     res.status(200).send("EVENT_RECEIVED");
+  });
+
+  // Health endpoint
+  app.get("/health", (req: Request, res: Response) => {
+    const health = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: {
+        IG_VERIFY_TOKEN: !!process.env.IG_VERIFY_TOKEN,
+        IG_PAGE_TOKEN: !!process.env.IG_PAGE_TOKEN,
+        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      }
+    };
+    res.json(health);
   });
 
   // API endpoint to get webhook events for dashboard
@@ -150,10 +213,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       environment: {
         IG_VERIFY_TOKEN: !!process.env.IG_VERIFY_TOKEN,
         IG_PAGE_TOKEN: !!process.env.IG_PAGE_TOKEN,
-        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY
+        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
       }
     };
     res.json(status);
+  });
+
+  // API endpoint to track deep link clicks
+  app.post("/api/track-click", async (req: Request, res: Response) => {
+    try {
+      const { event_id } = req.body;
+      if (event_id) {
+        await storage.updateWebhookEventDeepLinkClicked(event_id);
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ error: "event_id required" });
+      }
+    } catch (error) {
+      console.error("Error tracking click:", error);
+      res.status(500).json({ error: "Failed to track click" });
+    }
   });
 
   const httpServer = createServer(app);
