@@ -5,8 +5,13 @@ let openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
   if (!openai) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+    
+    if (!apiKey || apiKey === "placeholder_key") {
+      throw new Error("OPENAI_API_KEY is required for image analysis");
+    }
+    
     openai = new OpenAI({ 
-      apiKey: apiKey || "placeholder_key"
+      apiKey: apiKey
     });
   }
   return openai;
@@ -31,23 +36,56 @@ export interface ImageAnalysisResult {
   error?: string;
 }
 
-export class VisionAnalysisService {
-  
-  /**
-   * Analyze an image using OpenAI's vision capabilities
-   */
-  static async analyzeImage(imageUrl: string, context?: string): Promise<ImageAnalysisResult> {
-    try {
-      const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
-      
-      if (!apiKey || apiKey === "placeholder_key") {
-        return {
-          description: "Image analysis not available - OpenAI API key not configured",
-          error: "OpenAI API key required for image analysis"
-        };
+// Function specification for OpenAI function calling
+const processImageAnalysisSpec = {
+  name: "process_image_analysis",
+  description: "Process image analysis for music artist branding and career development",
+  parameters: {
+    type: "object",
+    properties: {
+      description: {
+        type: "string",
+        description: "Detailed description of what's in the image"
+      },
+      musicContext: {
+        type: "object",
+        properties: {
+          genre: { type: "string", description: "Musical genre or style suggested by the image" },
+          mood: { type: "string", description: "Emotional mood or atmosphere" },
+          instruments: { 
+            type: "array", 
+            items: { type: "string" },
+            description: "Any musical instruments visible or suggested" 
+          },
+          setting: { type: "string", description: "Performance or recording setting" },
+          aesthetics: { 
+            type: "array", 
+            items: { type: "string" },
+            description: "Visual aesthetics and style elements" 
+          }
+        }
+      },
+      marketingInsights: {
+        type: "object",
+        properties: {
+          engagement_potential: { type: "string", description: "Potential for social media engagement" },
+          target_audience: { type: "string", description: "Likely target demographic" },
+          visual_appeal: { type: "string", description: "Assessment of visual appeal" },
+          brand_alignment: { type: "string", description: "How it aligns with music branding" }
+        }
+      },
+      actionableAdvice: {
+        type: "array",
+        items: { type: "string" },
+        description: "3-5 specific actionable pieces of advice for the artist"
       }
+    },
+    required: ["description", "actionableAdvice"]
+  }
+};
 
-      const prompt = `You are MC, Loop's Music Concierge. Analyze this image and provide insights for a music artist.
+function buildImagePrompt(context?: string): string {
+  return `You are MC, Loop's Music Concierge. Analyze this image and provide insights for a music artist.
 
 ${context ? `Context: ${context}` : ''}
 
@@ -58,6 +96,16 @@ Please provide:
 4. 3-5 actionable pieces of advice for the artist
 
 Focus on how this image relates to music career development, branding, performance, or fan engagement.`;
+}
+
+export class VisionAnalysisService {
+  
+  /**
+   * Analyze an image using OpenAI's vision capabilities
+   */
+  static async analyzeImage(imageUrl: string, context?: string): Promise<ImageAnalysisResult> {
+    try {
+      const prompt = buildImagePrompt(context);
 
       const response = await getOpenAI().chat.completions.create({
         model: "gpt-4o", // GPT-4 with vision capabilities
@@ -79,65 +127,48 @@ Focus on how this image relates to music career development, branding, performan
             ]
           }
         ],
-        max_tokens: 500,
+        functions: [processImageAnalysisSpec],
+        function_call: { name: "process_image_analysis" },
+        max_tokens: 1000,
         temperature: 0.7
       });
 
-      const analysis = response.choices[0].message.content || "No analysis available";
-      
-      // Parse the response to extract structured information
-      return this.parseAnalysisResponse(analysis);
+      const functionCall = response.choices[0].message.function_call;
+      if (!functionCall || !functionCall.arguments) {
+        throw new Error("No function call response received");
+      }
+
+      const analysisData = JSON.parse(functionCall.arguments);
+      return analysisData as ImageAnalysisResult;
       
     } catch (error) {
       console.error("Error analyzing image:", error);
       return {
         description: "Unable to analyze image at this time",
-        error: `Analysis failed: ${error}`
+        error: `Analysis failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
-   * Parse the AI response into structured data
-   */
-  private static parseAnalysisResponse(response: string): ImageAnalysisResult {
-    // For now, return the full response as description
-    // In the future, we could use more sophisticated parsing
-    
-    const result: ImageAnalysisResult = {
-      description: response
-    };
-
-    // Extract actionable advice if the response contains numbered points
-    const adviceMatches = response.match(/\d+\.\s+([^\n]+)/g);
-    if (adviceMatches) {
-      result.actionableAdvice = adviceMatches.map(match => 
-        match.replace(/^\d+\.\s+/, '').trim()
-      );
-    }
-
-    return result;
-  }
-
-  /**
-   * Analyze multiple images (for carousels or multiple attachments)
+   * Analyze multiple images in parallel
    */
   static async analyzeMultipleImages(imageUrls: string[], context?: string): Promise<ImageAnalysisResult[]> {
-    const results: ImageAnalysisResult[] = [];
-    
-    for (const imageUrl of imageUrls) {
-      try {
-        const result = await this.analyzeImage(imageUrl, context);
-        results.push(result);
-      } catch (error) {
-        results.push({
-          description: "Failed to analyze this image",
-          error: `Analysis failed: ${error}`
-        });
-      }
+    try {
+      // Parallelize the image analysis requests
+      const results = await Promise.all(
+        imageUrls.map(imageUrl => this.analyzeImage(imageUrl, context))
+      );
+      
+      return results;
+    } catch (error) {
+      console.error("Error analyzing multiple images:", error);
+      // Return error results for all images if parallel processing fails
+      return imageUrls.map(() => ({
+        description: "Failed to analyze this image",
+        error: `Batch analysis failed: ${error instanceof Error ? error.message : String(error)}`
+      }));
     }
-    
-    return results;
   }
 
   /**
@@ -153,12 +184,29 @@ Focus on how this image relates to music career development, branding, performan
       };
     }
 
+    // Combine insights from all valid results
     const allAdvice = validResults
       .flatMap(r => r.actionableAdvice || [])
       .filter((advice, index, arr) => arr.indexOf(advice) === index); // Remove duplicates
 
+    const combinedMusicContext = validResults.reduce((acc, result) => {
+      if (result.musicContext) {
+        if (result.musicContext.genre) acc.genre = result.musicContext.genre;
+        if (result.musicContext.mood) acc.mood = result.musicContext.mood;
+        if (result.musicContext.instruments) {
+          acc.instruments = [...(acc.instruments || []), ...(result.musicContext.instruments || [])];
+        }
+        if (result.musicContext.setting) acc.setting = result.musicContext.setting;
+        if (result.musicContext.aesthetics) {
+          acc.aesthetics = [...(acc.aesthetics || []), ...(result.musicContext.aesthetics || [])];
+        }
+      }
+      return acc;
+    }, {} as NonNullable<ImageAnalysisResult['musicContext']>);
+
     return {
       description: `Analysis of ${validResults.length} image(s): ${validResults.map(r => r.description).join(' | ')}`,
+      musicContext: Object.keys(combinedMusicContext).length > 0 ? combinedMusicContext : undefined,
       actionableAdvice: allAdvice.slice(0, 5) // Limit to top 5 pieces of advice
     };
   }
