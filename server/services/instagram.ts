@@ -158,4 +158,71 @@ export async function sendInstagramMessage(
   throw lastError;
 }
 
+export async function markMessageAsSeen(
+  recipientId: string,
+  pageAccessToken: string
+): Promise<void> {
+  // Feature flag: if in debug mode, just log instead of sending
+  if (DEBUG_MODE) {
+    console.log("🚫 DEBUG MODE: Would mark message as seen for:", {
+      recipientId,
+    });
+    return;
+  }
+
+  // Rate limiting check
+  if (!rateLimiter.canMakeRequest()) {
+    console.warn("Rate limit exceeded, skipping mark as seen");
+    throw new Error("Rate limit exceeded");
+  }
+
+  const payload = {
+    recipient: JSON.stringify({ id: recipientId }),
+    sender_action: "mark_seen"
+  };
+
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      rateLimiter.recordRequest();
+      
+      const response = await axios.post(
+        `${INSTAGRAM_API_BASE}/me/messages`,
+        payload,
+        {
+          headers: {
+            "Authorization": `Bearer ${pageAccessToken}`,
+            "Content-Type": "application/json"
+          },
+          timeout: 5000, // 5 second timeout for seen indicators
+        }
+      );
+
+      console.log("✅ Message marked as seen successfully:", response.data);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(`Instagram API mark seen attempt ${attempt}/${MAX_RETRIES} failed:`, error);
+      
+      if (axios.isAxiosError(error)) {
+        console.error("Response data:", JSON.stringify(error.response?.data, null, 2));
+        console.error("Response status:", error.response?.status);
+        
+        // Don't retry on client errors (4xx)
+        if (error.response?.status && error.response.status >= 400 && error.response.status < 500) {
+          throw error;
+        }
+      }
+      
+      // Wait before retrying (exponential backoff)
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 

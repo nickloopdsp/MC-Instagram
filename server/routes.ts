@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { mcBrain, type ConversationContext } from "./services/mcBrain";
-import { sendInstagramMessage, verifyWebhookSignature } from "./services/instagram";
+import { sendInstagramMessage, verifyWebhookSignature, markMessageAsSeen } from "./services/instagram";
 import { loopGuidance } from "./services/loopApi";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -54,6 +54,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const recipientId = messagingEvent.recipient?.id;
           const messageText = messagingEvent.message?.text;
           const sourceMessageId = messagingEvent.message?.mid;
+          
+          // Extract media attachments
+          const attachments = messagingEvent.message?.attachments || [];
+          const mediaInfo = attachments.map((attachment: any) => ({
+            type: attachment.type,
+            url: attachment.payload?.url,
+            title: attachment.payload?.title || attachment.title
+          }));
 
           // Skip echo messages (messages sent by the bot itself)
           if (messagingEvent.message?.is_echo) {
@@ -61,20 +69,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          if (senderId && messageText) {
+          // Process if we have either text or media
+          if (senderId && (messageText || attachments.length > 0)) {
             let intent = null;
             let entities = null;
             let deepLink = null;
             
             try {
-              console.log(`Received message from ${senderId}: ${messageText}`);
+              // Get page access token for all Instagram API operations
+              const pageAccessToken = process.env.IG_PAGE_TOKEN;
+              
+              // Mark message as seen immediately for better UX
+              if (pageAccessToken) {
+                try {
+                  await markMessageAsSeen(senderId, pageAccessToken);
+                  console.log(`✅ Marked message as seen for ${senderId}`);
+                } catch (error) {
+                  // Don't fail the whole request if mark as seen fails
+                  console.error("Failed to mark message as seen:", error);
+                }
+              }
+
+              // Prepare message content with media context
+              let fullMessage = messageText || "";
+              if (attachments.length > 0) {
+                const mediaDescription = mediaInfo.map((m: any) => 
+                  `[${m.type.toUpperCase()}: ${m.title || m.url || 'media'}]`
+                ).join(' ');
+                fullMessage = fullMessage ? `${fullMessage} ${mediaDescription}` : mediaDescription;
+              }
+              
+              console.log(`Received message from ${senderId}: ${fullMessage}`);
+              console.log(`Media attachments:`, JSON.stringify(mediaInfo, null, 2));
 
               // Store the incoming webhook event
               await storage.createWebhookEvent({
                 eventType: "message_received",
                 senderId,
                 recipientId: recipientId || "unknown",
-                messageText,
+                messageText: fullMessage,
                 status: "processed"
               });
 
@@ -82,15 +115,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await loopGuidance.logChatMessage(senderId, {
                 source: "instagram_dm",
                 source_msg_id: sourceMessageId || null,
-                text: messageText,
-                attachments: []
+                text: messageText || "",
+                attachments: mediaInfo.map((m: any) => m.url).filter(Boolean)
               });
 
               // Get conversation context for this user
               const conversationContext = await storage.getConversationContext(senderId);
 
-              // Process message through mcBrain with conversation context
-              const aiResponse = await mcBrain(messageText, conversationContext);
+              // Process message through mcBrain with conversation context and media info
+              const aiResponse = await mcBrain(fullMessage, conversationContext, mediaInfo);
               console.log(`AI Response: ${aiResponse}`);
 
               // Parse ACTION block from AI response
@@ -113,7 +146,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
 
               // Send response back via Instagram API
-              const pageAccessToken = process.env.IG_PAGE_TOKEN;
               if (pageAccessToken) {
                 await sendInstagramMessage(senderId, aiResponse, pageAccessToken);
 
