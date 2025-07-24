@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 attachments: mediaInfo.map((m: any) => m.url).filter(Boolean)
               });
 
-              // Get conversation context for this user
+              // Get conversation context for this user (now includes the message we just stored)
               const conversationContext = await storage.getConversationContext(senderId);
 
               // Process message through mcBrain with conversation context and media info
@@ -156,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   eventType: "message_sent",
                   senderId: recipientId || "bot",
                   recipientId: senderId,
-                  messageText: aiResponse,
+                  messageText: null,  // Bot doesn't have incoming message text
                   responseText: aiResponse,
                   status: "sent",
                   intent,

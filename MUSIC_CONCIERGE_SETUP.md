@@ -193,6 +193,56 @@ For issues or questions:
 - Review server logs for API errors
 - Ensure all environment variables are properly set 
 
+## Conversation Memory (NEW!)
+
+### What's Been Fixed
+
+The Music Concierge now has full conversation memory! Previously, MC was responding to each message in isolation without remembering the conversation history. We've fixed this by:
+
+1. **Updated Database Queries**: The system now retrieves both user messages AND bot responses to build complete conversation history
+2. **Proper Message Storage**: Messages are stored with correct sender/recipient relationships
+3. **Context Window**: MC now remembers the last 10 messages (5 exchanges) by default
+4. **Explicit Memory Instructions**: The AI system prompt now emphasizes using conversation history
+
+### How It Works
+
+When a user sends a message:
+1. The message is stored in the database
+2. The system retrieves the last 10 messages from the conversation (both user and bot messages)
+3. This conversation history is passed to the AI along with the new message
+4. The AI uses this context to provide personalized, contextual responses
+
+### Example Conversation with Memory
+
+```
+User: "Hi MC! I'm Sarah, an indie pop artist from Brooklyn."
+MC: "Hey Sarah! Great to meet you! An indie pop artist from Brooklyn - I love it! The Brooklyn music scene is thriving right now..."
+
+User: "I'm thinking about releasing my next single. When do you think is the best time?"
+MC: "Sarah, for indie pop artists like yourself, timing is crucial. Based on what I know about the Brooklyn scene..."
+
+User: "What about playlist strategies?"
+MC: "For your indie pop sound, Sarah, I'd recommend targeting these playlist categories..."
+```
+
+Notice how MC remembers the user's name, genre, and location throughout the conversation!
+
+### Testing Conversation Memory
+
+To test the conversation memory feature:
+
+```bash
+cd server
+npx tsx test/testConversationMemory.ts
+```
+
+This test script simulates a multi-message conversation and verifies that MC remembers user details across messages.
+
+### Configuration
+
+- **Memory Limit**: By default, MC remembers the last 10 messages. You can adjust this in `server/storage.ts`
+- **Context Usage**: The AI is explicitly instructed to use conversation history in its system prompt
+
 ## What We Implemented vs What You Subscribed To:
 
 ### What we implemented:

@@ -1,6 +1,6 @@
 import { users, webhookEvents, type User, type InsertUser, type WebhookEvent, type InsertWebhookEvent } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -78,20 +78,49 @@ export class DatabaseStorage implements IStorage {
     return events;
   }
 
-  async getConversationContext(senderId: string, limit: number = 6): Promise<Array<{messageText: string | null, responseText: string | null, intent: string | null}>> {
+  async getConversationContext(senderId: string, limit: number = 10): Promise<Array<{messageText: string | null, responseText: string | null, intent: string | null}>> {
+    // Get all messages in the conversation (both from user and to user)
     const events = await db
       .select({
         messageText: webhookEvents.messageText,
         responseText: webhookEvents.responseText,
-        intent: webhookEvents.intent
+        intent: webhookEvents.intent,
+        eventType: webhookEvents.eventType,
+        senderId: webhookEvents.senderId,
+        recipientId: webhookEvents.recipientId,
+        createdAt: webhookEvents.createdAt
       })
       .from(webhookEvents)
-      .where(eq(webhookEvents.senderId, senderId))
+      .where(or(
+        eq(webhookEvents.senderId, senderId),
+        eq(webhookEvents.recipientId, senderId)
+      ))
       .orderBy(desc(webhookEvents.createdAt))
-      .limit(limit);
+      .limit(limit * 2); // Get more messages since we're filtering
     
-    // Return in chronological order for context
-    return events.reverse();
+    // Transform into conversation format
+    const conversation: Array<{messageText: string | null, responseText: string | null, intent: string | null}> = [];
+    
+    for (const event of events) {
+      if (event.eventType === 'message_received' && event.senderId === senderId) {
+        // User message
+        conversation.push({
+          messageText: event.messageText,
+          responseText: null,
+          intent: null
+        });
+      } else if (event.eventType === 'message_sent' && event.recipientId === senderId) {
+        // Bot response
+        conversation.push({
+          messageText: null,
+          responseText: event.responseText || event.messageText,
+          intent: event.intent
+        });
+      }
+    }
+    
+    // Return in chronological order for context, limited to requested amount
+    return conversation.reverse().slice(-limit);
   }
 }
 
