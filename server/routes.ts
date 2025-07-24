@@ -33,10 +33,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const startTime = Date.now();
     const body = req.body;
     
-    // Log all incoming webhook data for debugging
+    // Enhanced logging for production debugging
     console.log("=== WEBHOOK RECEIVED ===");
+    console.log("Environment:", process.env.NODE_ENV || 'development');
+    console.log("Railway Deployment:", !!process.env.RAILWAY_ENVIRONMENT_NAME);
     console.log("Headers:", JSON.stringify(req.headers, null, 2));
     console.log("Body:", JSON.stringify(body, null, 2));
+    console.log("OpenAI Key Available:", !!process.env.OPENAI_API_KEY);
+    console.log("Instagram Token Available:", !!process.env.IG_PAGE_TOKEN);
     console.log("========================");
 
     // Temporarily disable signature verification for debugging
@@ -56,16 +60,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const messageText = messagingEvent.message?.text;
           const sourceMessageId = messagingEvent.message?.mid;
           
-          // Debug logging for ID formats
-          console.log("🔍 Webhook IDs:", {
+          // Enhanced debugging for production
+          console.log("🔍 PRODUCTION Webhook IDs:", {
             senderId,
             senderIdType: typeof senderId,
+            senderIdLength: senderId ? senderId.length : 0,
             recipientId,
             recipientIdType: typeof recipientId,
+            messageText: messageText ? messageText.substring(0, 100) + "..." : "NO TEXT",
+            hasAttachments: !!(messagingEvent.message?.attachments?.length),
+            attachmentCount: messagingEvent.message?.attachments?.length || 0,
             rawSender: messagingEvent.sender,
-            rawRecipient: messagingEvent.recipient
+            rawRecipient: messagingEvent.recipient,
+            timestamp: new Date().toISOString()
           });
           
+          // Check if this is test/demo data
+          if (senderId && (senderId.includes('demo') || senderId.includes('test') || !/^\d+$/.test(senderId))) {
+            console.log("⚠️  PRODUCTION: Test/Demo user ID detected:", {
+              senderId,
+              note: "This appears to be test data. Instagram user IDs should be numeric strings.",
+              isProduction: !!process.env.RAILWAY_ENVIRONMENT_NAME,
+              environment: process.env.NODE_ENV
+            });
+          } else if (senderId) {
+            console.log("✅ PRODUCTION: Valid user ID format detected:", {
+              senderId: senderId.substring(0, 8) + "...", // Partial for privacy
+              length: senderId.length,
+              isNumeric: /^\d+$/.test(senderId)
+            });
+          }
+
           // Extract media attachments
           const attachments = messagingEvent.message?.attachments || [];
           const mediaInfo = attachments.map((attachment: any) => ({
@@ -331,6 +356,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     };
     res.json(status);
+  });
+
+  // Detailed diagnostics endpoint for Railway debugging
+  app.get("/api/diagnostics", (req: Request, res: Response) => {
+    const diagnostics = {
+      timestamp: new Date().toISOString(),
+      environment: {
+        NODE_ENV: process.env.NODE_ENV || 'development',
+        isRailway: !!process.env.RAILWAY_ENVIRONMENT_NAME,
+        railwayEnv: process.env.RAILWAY_ENVIRONMENT_NAME || 'not-railway',
+        port: process.env.PORT || '5000'
+      },
+      apis: {
+        openai: {
+          configured: !!process.env.OPENAI_API_KEY,
+          keyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) + "..." : "none"
+        },
+        instagram: {
+          pageToken: !!process.env.IG_PAGE_TOKEN,
+          verifyToken: !!process.env.IG_VERIFY_TOKEN,
+          appSecret: !!process.env.IG_APP_SECRET,
+          tokenPrefix: process.env.IG_PAGE_TOKEN ? process.env.IG_PAGE_TOKEN.substring(0, 10) + "..." : "none"
+        },
+        facebook: {
+          appId: !!process.env.FACEBOOK_APP_ID,
+          appSecret: !!process.env.FACEBOOK_APP_SECRET
+        }
+      },
+      server: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        version: process.version
+      },
+      features: {
+        debugMode: process.env.DEBUG_MODE === "true",
+        instagramValidation: true, // We added this
+        enhancedFallback: true // We added this
+      }
+    };
+    res.json(diagnostics);
   });
 
   // API endpoint to track deep link clicks

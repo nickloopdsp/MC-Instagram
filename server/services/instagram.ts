@@ -42,6 +42,22 @@ class RateLimiter {
 
 const rateLimiter = new RateLimiter();
 
+// Validate Instagram user ID format
+function isValidInstagramUserId(userId: string): boolean {
+  // Instagram user IDs are typically numeric strings with 15-17 digits
+  // They should not contain letters or be obvious demo values
+  const numericPattern = /^\d{10,20}$/;
+  const isDemoValue = userId.includes('demo') || userId.includes('test') || userId.includes('_');
+  
+  // In debug mode, allow test IDs for development
+  if (DEBUG_MODE && isDemoValue) {
+    console.log("🔧 DEBUG MODE: Allowing test user ID for development:", userId);
+    return true;
+  }
+  
+  return numericPattern.test(userId) && !isDemoValue;
+}
+
 // Verify webhook signature
 export function verifyWebhookSignature(payload: string, signature: string, appSecret: string): boolean {
   const expectedSignature = crypto
@@ -65,6 +81,16 @@ export async function sendInstagramMessage(
   messageText: string,
   pageAccessToken: string
 ): Promise<void> {
+  // Validate recipient ID format
+  if (!isValidInstagramUserId(recipientId)) {
+    console.log("🚫 Invalid Instagram user ID format:", {
+      recipientId,
+      reason: "Non-numeric or demo value detected"
+    });
+    console.log("📝 Message would have been:", messageText.substring(0, 100) + "...");
+    return;
+  }
+
   // Feature flag: if in debug mode, just log instead of sending
   if (DEBUG_MODE) {
     console.log("🚫 DEBUG MODE: Would send Instagram message:", {
@@ -176,6 +202,20 @@ export async function sendTypingIndicator(
   action: 'typing_on' | 'typing_off',
   pageAccessToken: string
 ): Promise<void> {
+  console.log(`🔍 TYPING INDICATOR DEBUG: Starting ${action} for recipient ${recipientId}`);
+  
+  // Validate recipient ID format
+  if (!isValidInstagramUserId(recipientId)) {
+    console.log("🚫 Invalid Instagram user ID for typing indicator:", {
+      recipientId,
+      action,
+      reason: "Non-numeric or demo value detected"
+    });
+    return;
+  }
+
+  console.log(`✅ TYPING INDICATOR: User ID validation passed for ${recipientId}`);
+
   // Feature flag: if in debug mode, just log instead of sending
   if (DEBUG_MODE) {
     console.log("🚫 DEBUG MODE: Would send typing indicator:", {
@@ -185,11 +225,15 @@ export async function sendTypingIndicator(
     return;
   }
 
+  console.log(`✅ TYPING INDICATOR: DEBUG_MODE is false, proceeding to send ${action}`);
+
   // Rate limiting check
   if (!rateLimiter.canMakeRequest()) {
     console.warn("Rate limit exceeded, skipping typing indicator");
     return;
   }
+
+  console.log(`✅ TYPING INDICATOR: Rate limit check passed`);
 
   const recipientIdStr = String(recipientId);
   
@@ -234,6 +278,15 @@ export async function markMessageAsSeen(
   recipientId: string,
   pageAccessToken: string
 ): Promise<void> {
+  // Validate recipient ID format
+  if (!isValidInstagramUserId(recipientId)) {
+    console.log("🚫 Invalid Instagram user ID for mark as seen:", {
+      recipientId,
+      reason: "Non-numeric or demo value detected"
+    });
+    return;
+  }
+
   // Feature flag: if in debug mode, just log instead of sending
   if (DEBUG_MODE) {
     console.log("🚫 DEBUG MODE: Would mark message as seen for:", {

@@ -485,25 +485,95 @@ Always respond in two parts:
       return aiResponse;
     } else {
       // Fallback stub response when OpenAI is not configured
-      let response = `Thanks for your message: "${userText}". `;
+      console.log("⚠️  OpenAI API key not configured - using fallback response");
       
-      if (mediaAttachments.length > 0) {
-        const mediaTypes = mediaAttachments.map(m => m.type).join(', ');
-        response += `I see you've shared ${mediaAttachments.length} ${mediaTypes} file(s). `;
-      }
-
-      if (extractedContent.length > 0) {
-        const instagramUrls = extractedContent.filter(c => c.type.startsWith('instagram_'));
-        if (instagramUrls.length > 0) {
-          response += `I also noticed you shared ${instagramUrls.length} Instagram ${instagramUrls.length === 1 ? 'link' : 'links'}. `;
+      let response = "";
+      
+      // Check if this is Instagram content sharing
+      const hasInstagramContent = extractedContent.some(c => c.type.startsWith('instagram_')) || 
+                                mediaAttachments.some(m => m.type === 'ig_reel' || (m.title && m.title.includes('@')));
+      
+      if (hasInstagramContent) {
+        // Handle Instagram content specifically
+        const instagramContent = extractedContent.filter(c => c.type.startsWith('instagram_'));
+        if (instagramContent.length > 0) {
+          const content = instagramContent[0];
+          response = `I see you've shared an Instagram ${content.type.replace('instagram_', '')}! `;
+          
+          if (content.error && content.error.includes('API access limited')) {
+            response += `I'll save this to your moodboard so you can organize your inspiration. `;
+          } else if (content.description) {
+            response += `"${content.description}" - `;
+          }
+          
+          response += `Click the link to view and organize in your Loop dashboard.`;
+          
+          // Add ACTION block for moodboard
+          response += `\n\n[ACTION]
+{
+  "intent": "moodboard.add",
+  "entities": {
+    "url": "${content.url}",
+    "content_type": "${content.type}",
+    "caption": "${content.description || content.title || ''}"
+  },
+  "deep_link": "https://app.loop.com/open?widget=moodboard&action=add&url=${encodeURIComponent(content.url)}&utm=ig_dm",
+  "music_context": {
+    "media_type": "instagram_url",
+    "topic": "inspiration"
+  }
+}
+[/ACTION]`;
+        } else {
+          // Instagram attachment without URL
+          response = `I see you've shared Instagram content! I'll save this to your moodboard for inspiration. Click the link to organize it.`;
+          
+          response += `\n\n[ACTION]
+{
+  "intent": "moodboard.add",
+  "entities": {
+    "content_type": "instagram_content",
+    "caption": "Instagram content shared via DM"
+  },
+  "deep_link": "https://app.loop.com/open?widget=moodboard&utm=ig_dm&action=add",
+  "music_context": {
+    "media_type": "instagram_content",
+    "topic": "inspiration"
+  }
+}
+[/ACTION]`;
         }
-      }
+      } else {
+        // General fallback for non-Instagram content
+        response = `Thanks for your message: "${userText}". `;
+        
+        if (mediaAttachments.length > 0) {
+          const mediaTypes = mediaAttachments.map(m => m.type).join(', ');
+          response += `I see you've shared ${mediaAttachments.length} ${mediaTypes} file(s). `;
+        }
 
-      if (imageAnalysis.length > 0) {
-        response += `I can see ${imageAnalysis.length} image(s) but need OpenAI configuration to analyze them. `;
+        if (extractedContent.length > 0) {
+          response += `I also noticed you shared ${extractedContent.length} link(s). `;
+        }
+
+        if (imageAnalysis.length > 0) {
+          response += `I can see ${imageAnalysis.length} image(s) but need OpenAI configuration to analyze them. `;
+        }
+        
+        response += "To enable full AI analysis of your content, please configure your OpenAI API key in the environment variables.";
+        
+        // Add generic ACTION block
+        response += `\n\n[ACTION]
+{
+  "intent": "chat.generic",
+  "entities": {},
+  "deep_link": "https://app.loop.com/open?utm=ig_dm",
+  "music_context": {
+    "topic": "general"
+  }
+}
+[/ACTION]`;
       }
-      
-      response += "I'm processing this through my AI brain and here's my response. This is currently a stub - will be replaced with GPT-4 integration soon!";
       
       return response;
     }

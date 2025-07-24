@@ -5,6 +5,30 @@ import { mcBrain } from "../services/mcBrain";
 async function testInstagramUrlProcessing() {
   console.log("🔗 Testing Instagram URL Processing...\n");
 
+  // Test Instagram user ID validation
+  console.log("=== Instagram User ID Validation Tests ===");
+  const { sendInstagramMessage } = await import("../services/instagram");
+  
+  const testUserIds = [
+    "1234567890123456", // Valid numeric ID
+    "demo_user_123", // Invalid demo ID
+    "test_user_456", // Invalid test ID  
+    "abc123def456", // Invalid alphanumeric
+    "17841234567890123" // Valid long numeric ID
+  ];
+  
+  for (const userId of testUserIds) {
+    console.log(`\nTesting user ID: "${userId}"`);
+    try {
+      await sendInstagramMessage(userId, "Test message", "fake_token");
+      console.log("✅ Message would be sent");
+    } catch (error) {
+      console.log("❌ Error:", error instanceof Error ? error.message : error);
+    }
+  }
+  
+  console.log("\n=== URL Detection Tests ===");
+  
   const testUrls = [
     "https://www.instagram.com/p/ABC123/",
     "https://instagram.com/reel/DEF456/",
@@ -13,8 +37,7 @@ async function testInstagramUrlProcessing() {
     "https://example.com/not-instagram",
     "Check out this post: https://www.instagram.com/p/XYZ789/ and let me know what you think!"
   ];
-
-  console.log("=== URL Detection Tests ===");
+  
   for (const testUrl of testUrls) {
     console.log(`\nTesting: "${testUrl}"`);
     

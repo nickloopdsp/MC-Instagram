@@ -81,14 +81,29 @@ export class URLProcessor {
       } catch (apiError) {
         console.log("Instagram oEmbed API failed, using fallback approach");
         
-        // Fallback: Return structured data that helps the AI understand what was shared
+        // Enhanced fallback: Create more intelligent descriptions based on URL patterns and post ID
+        let intelligentDescription = "Instagram content shared by user.";
+        let title = `Instagram ${type.replace('instagram_', '')}`;
+        
+        // Try to extract more context from the URL
+        if (type === 'instagram_reel') {
+          intelligentDescription = "Instagram Reel shared - likely a short video with music or creative content. Great for inspiration!";
+          title = `Instagram Reel (${postId || 'ID unavailable'})`;
+        } else if (type === 'instagram_story') {
+          intelligentDescription = "Instagram Story shared - temporary content that often showcases behind-the-scenes moments or real-time updates.";
+          title = `Instagram Story (${postId || 'ID unavailable'})`;
+        } else {
+          intelligentDescription = "Instagram Post shared - could be a photo, carousel, or video post. Perfect for your moodboard!";
+          title = `Instagram Post (${postId || 'ID unavailable'})`;
+        }
+        
         return {
           type,
           url,
           postId: postId || undefined,
-          title: `Instagram ${type.replace('instagram_', '')} (${postId || 'ID unavailable'})`,
-          description: "Instagram content shared by user. While I can't access the specific content directly, I can help you save it to your moodboard or discuss it if you describe what it shows.",
-          error: "Instagram API access limited - please describe the content for detailed analysis"
+          title,
+          description: intelligentDescription,
+          error: "Limited API access - content saved for moodboard organization"
         };
       }
     } catch (error) {
