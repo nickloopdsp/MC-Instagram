@@ -351,4 +351,57 @@ export async function markMessageAsSeen(
   throw lastError;
 }
 
+// Validate Instagram API configuration
+export async function validateInstagramConfig(pageAccessToken: string): Promise<void> {
+  try {
+    console.log("🔍 Validating Instagram configuration...");
+    
+    // Test the page access token by making a simple API call
+    const response = await axios.get(
+      `${INSTAGRAM_API_BASE}/me`,
+      {
+        headers: {
+          "Authorization": `Bearer ${pageAccessToken}`,
+        },
+        timeout: 10000,
+      }
+    );
+    
+    console.log("✅ Instagram API configuration valid:", {
+      pageId: response.data.id,
+      pageName: response.data.name,
+      pageCategory: response.data.category
+    });
+    
+  } catch (error: any) {
+    console.error("❌ Instagram API configuration validation failed:", error.response?.data || error.message);
+    throw new Error(`Instagram API configuration invalid: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+// Check if a user can receive messages
+export async function checkUserCanReceiveMessages(userId: string, pageAccessToken: string): Promise<boolean> {
+  try {
+    console.log(`🔍 Checking if user ${userId} can receive messages...`);
+    
+    // Validate user ID format first
+    if (!isValidInstagramUserId(userId)) {
+      console.log("❌ Invalid user ID format");
+      return false;
+    }
+    
+    // For now, we'll do a simple validation since Instagram doesn't provide
+    // a direct API to check if a user can receive messages
+    // In a real implementation, you might want to check conversation history
+    // or attempt a test API call
+    
+    console.log(`✅ User ID ${userId} appears valid`);
+    return true;
+    
+  } catch (error: any) {
+    console.error(`❌ Error checking user ${userId}:`, error.message);
+    return false;
+  }
+}
+
 

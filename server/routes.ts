@@ -460,6 +460,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test message endpoint to verify Instagram API connectivity
+  app.post("/api/test-message", async (req: Request, res: Response) => {
+    const pageAccessToken = process.env.IG_PAGE_TOKEN;
+    
+    if (!pageAccessToken) {
+      res.status(500).json({ error: "IG_PAGE_TOKEN not configured" });
+      return;
+    }
+
+    try {
+      // Use a default test user ID or get from request body
+      const recipientId = req.body.recipient_id || "17841401126058150";
+      const message = req.body.message || "Test message with Instagram API and Instagram Login";
+      
+      console.log("🧪 TEST ENDPOINT: Sending test message:", {
+        recipientId,
+        message: message.substring(0, 50) + "..."
+      });
+
+      // Validate Instagram configuration first
+      await validateInstagramConfig(pageAccessToken);
+      
+      // Check if user can receive messages
+      const canReceiveMessages = await checkUserCanReceiveMessages(recipientId, pageAccessToken);
+      if (!canReceiveMessages) {
+        return res.status(400).json({ 
+          error: "User cannot receive messages",
+          details: "The user may not have started a conversation with your Instagram account or may have blocked the account",
+          recipientId
+        });
+      }
+
+      // Send the test message
+      await sendInstagramMessage(recipientId, message, pageAccessToken);
+      
+      res.json({ 
+        success: true, 
+        message: "Test message sent successfully",
+        recipientId,
+        messageLength: message.length
+      });
+      
+    } catch (error) {
+      console.error("🧪 TEST ENDPOINT ERROR:", error);
+      
+      // Provide specific error handling for Instagram API errors
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as any;
+        if (axiosError.response?.data?.error) {
+          const igError = axiosError.response.data.error;
+          
+          // Handle specific Instagram API error codes
+          if (igError.code === 100 && igError.error_subcode === 2534014) {
+            return res.status(400).json({
+              error: "Instagram user not found",
+              details: "The recipient ID is not valid or the user cannot receive messages. This can happen if: (1) The user hasn't started a conversation with your Instagram account, (2) The user has blocked your account, (3) The user ID is invalid, or (4) Your Instagram app lacks proper permissions.",
+              instagram_error: igError.message,
+              code: igError.code,
+              subcode: igError.error_subcode,
+              recipientId: req.body.recipient_id || "17841401126058150"
+            });
+          }
+          
+          return res.status(400).json({
+            error: "Instagram API error",
+            details: igError.message,
+            code: igError.code,
+            subcode: igError.error_subcode
+          });
+        }
+      }
+      
+      res.status(500).json({ 
+        error: "Failed to send test message",
+        details: error instanceof Error ? error.message : error
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
