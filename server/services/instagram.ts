@@ -125,15 +125,16 @@ export async function sendInstagramMessage(
   // Create message with optional quick reply
   const messageObj: any = { text: cleanMessage };
   
-  // Add quick reply button if there's a deep link or default Loop dashboard
-  const dashboardUrl = deepLink || "https://app.loop.com/open?utm=ig_dm";
-  messageObj.quick_replies = [
-    {
-      content_type: "text",
-      title: "Open Loop Dashboard",
-      payload: dashboardUrl
-    }
-  ];
+  // Only add quick reply button if there's a specific deep link (not just default dashboard)
+  if (deepLink && deepLink !== "https://app.loop.com/open?utm=ig_dm") {
+    messageObj.quick_replies = [
+      {
+        content_type: "text",
+        title: "Open in Loop",
+        payload: deepLink
+      }
+    ];
+  }
 
   // Ensure recipientId is a string
   const recipientIdStr = String(recipientId);

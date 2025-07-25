@@ -187,31 +187,28 @@ export class OptimizedFunctionHandlers {
     
     switch (functionName) {
       case "save_to_moodboard":
-        // Return routing info, not actual save operation
+        // Only return routing info if user explicitly wants to save/organize
         return {
           success: true,
-          action: "route_to_moodboard",
-          deep_link: `https://app.loop.com/open?widget=moodboard&action=add&url=${encodeURIComponent(args.content_url)}&utm=ig_dm`,
-          message: "I'll save this to your moodboard! Click the link to view and organize your inspiration."
+          action: "content_saved",
+          message: "I've noted that content for you! It looks like great inspiration."
         };
         
       case "search_music_contacts":
-        // Return search link, not actual results
-        const searchQuery = [args.role, args.location, args.genre].filter(Boolean).join(' ');
+        // Return conversational advice about networking
+        const location = args.location ? ` in ${args.location}` : '';
         return {
           success: true,
-          action: "route_to_networking",
-          deep_link: `https://app.loop.com/open?widget=networking&search=${encodeURIComponent(searchQuery)}&utm=ig_dm`,
-          message: `I'll help you find ${args.role}s${args.location ? ` in ${args.location}` : ''}. Click to see your personalized matches in Loop.`
+          action: "networking_advice",
+          message: `For finding ${args.role}s${location}, I'd suggest checking local music venues, industry events, and networking groups. Social media hashtags related to your genre can also be helpful. What specific type of collaboration are you looking for?`
         };
         
       case "create_reminder_task":
-        // Return task creation link, not actual task
+        // Acknowledge the task conversationally
         return {
           success: true,
-          action: "route_to_tasks",
-          deep_link: `https://app.loop.com/open?widget=tasks&action=create&title=${encodeURIComponent(args.title)}&utm=ig_dm`,
-          message: `Got it! I'll create a reminder for "${args.title}". Click to add details and manage your tasks.`
+          action: "task_noted",
+          message: `Got it! I'll help you remember "${args.title}". Setting reminders is a great way to stay organized with your music career goals.`
         };
         
       case "get_artist_analytics":
@@ -243,7 +240,7 @@ export class OptimizedFunctionHandlers {
         }
         
       case "quick_music_tip":
-        // This one actually returns content since it's meant for quick DM responses
+        // Return tip without dashboard routing
         const tips = {
           release_strategy: [
             "Release singles every 6-8 weeks to keep momentum with streaming algorithms",
@@ -269,8 +266,7 @@ export class OptimizedFunctionHandlers {
         return {
           success: true,
           tip: randomTip,
-          deep_link: `https://app.loop.com/open?widget=learn&topic=${args.topic}&utm=ig_dm`,
-          message: `💡 Quick tip: ${randomTip}\n\nWant more personalized strategies? Check your Loop dashboard!`
+          message: `💡 ${randomTip}`
         };
         
       case "identify_user_need":

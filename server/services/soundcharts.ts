@@ -2,8 +2,8 @@ import axios, { AxiosInstance } from 'axios';
 
 // Soundcharts API configuration
 const SOUNDCHARTS_API_BASE = 'https://customer.api.soundcharts.com';
-const SOUNDCHARTS_APP_ID = 'LOOP_A1DFF434';
-const SOUNDCHARTS_API_KEY = 'bb1bd7aa455a1c5f';
+const SOUNDCHARTS_APP_ID = process.env.SOUNDCHARTS_APP_ID || 'LOOP_A1DFF434';
+const SOUNDCHARTS_API_KEY = process.env.SOUNDCHARTS_API_KEY || 'bb1bd7aa455a1c5f';
 
 // Types for Soundcharts API responses
 export interface SoundchartsArtist {
