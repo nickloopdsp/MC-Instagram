@@ -155,7 +155,7 @@ export async function sendInstagramMessage(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await axios.post(
-        `${INSTAGRAM_API_BASE}/me/messages`,
+        `https://graph.instagram.com/v21.0/me/messages`,
         payload,
         {
           headers: {
@@ -193,25 +193,6 @@ export async function sendInstagramMessage(
   
   if (lastError?.response?.data?.error) {
     console.error("Instagram API Error Details:", lastError.response.data.error);
-    
-    // Provide specific guidance for common errors
-    const error = lastError.response.data.error;
-    if (error.code === 100 && error.error_subcode === 2534014) {
-      console.error("🚨 INSTAGRAM ERROR ANALYSIS:");
-      console.error("   Error: User not found (Code 100, Subcode 2534014)");
-      console.error("   This means:");
-      console.error("   1. The recipient user doesn't exist");
-      console.error("   2. The user hasn't messaged your business account first");
-      console.error("   3. The user isn't in your app's test users list");
-      console.error("   4. Wrong Instagram Business Account/Page configuration");
-      console.error("   ");
-      console.error("📋 TROUBLESHOOTING STEPS:");
-      console.error("   1. Verify recipient ID is correct Instagram user ID");
-      console.error("   2. Check if user has messaged your business account before");
-      console.error("   3. Add user as test user in Meta Developer Console");
-      console.error("   4. Verify Instagram page is correctly connected to your app");
-      console.error(`   5. Test with a different user ID that has messaged you first`);
-    }
   }
   
   throw new Error(`Failed to send Instagram message after ${MAX_RETRIES} attempts: ${lastError.message}`);
@@ -223,7 +204,6 @@ export async function sendTypingIndicator(
   pageAccessToken: string
 ): Promise<void> {
   console.log(`🔍 TYPING INDICATOR DEBUG: Starting ${action} for recipient ${recipientId}`);
-  console.log(`🔍 TYPING INDICATOR DEBUG: Environment check - DEBUG_MODE: ${process.env.DEBUG_MODE}, PAGE_TOKEN available: ${!!pageAccessToken}`);
   
   // Validate recipient ID format
   if (!isValidInstagramUserId(recipientId)) {
@@ -242,7 +222,6 @@ export async function sendTypingIndicator(
     console.log("🚫 DEBUG MODE: Would send typing indicator:", {
       recipientId,
       action,
-      note: "Set DEBUG_MODE=false in Railway to enable real API calls"
     });
     return;
   }
@@ -251,7 +230,7 @@ export async function sendTypingIndicator(
 
   // Rate limiting check
   if (!rateLimiter.canMakeRequest()) {
-    console.warn("⚠️ Rate limit exceeded, skipping typing indicator");
+    console.warn("Rate limit exceeded, skipping typing indicator");
     return;
   }
 
@@ -261,8 +240,6 @@ export async function sendTypingIndicator(
   
   console.log(`👨‍💻 Sending typing indicator (${action}):`, {
     recipientId: recipientIdStr,
-    endpoint: `${INSTAGRAM_API_BASE}/me/messages`,
-    payload: { recipient: { id: recipientIdStr }, sender_action: action }
   });
   
   const payload = {
@@ -272,7 +249,7 @@ export async function sendTypingIndicator(
 
   try {
     const response = await axios.post(
-      `${INSTAGRAM_API_BASE}/me/messages`,
+      `https://graph.instagram.com/v21.0/me/messages`,
       payload,
       {
         headers: {
@@ -284,31 +261,14 @@ export async function sendTypingIndicator(
     );
     
     console.log(`✅ Typing indicator (${action}) sent successfully:`, response.data);
-    console.log(`🎯 SUCCESS: Instagram should now show "${action === 'typing_on' ? 'MC is typing...' : 'typing indicator off'}" in the DM`);
     rateLimiter.recordRequest();
     
   } catch (error: any) {
     console.error(`❌ Failed to send typing indicator (${action}):`, {
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data,
-      recipientId,
-      action
+      data: error.response?.data
     });
-    
-    // Enhanced error logging for common issues
-    if (error.response?.status === 400) {
-      console.error("🚨 INSTAGRAM API ERROR 400: Likely causes:");
-      console.error("  1. Invalid recipient ID format (must be numeric, 15-17 digits)");
-      console.error("  2. User has not messaged your Instagram business account first");
-      console.error("  3. Instagram app permissions missing");
-    }
-    
-    if (error.response?.status === 401) {
-      console.error("🚨 INSTAGRAM API ERROR 401: Authentication failed");
-      console.error("  1. Check IG_PAGE_TOKEN is valid and not expired");
-      console.error("  2. Verify token has correct permissions");
-    }
     
     // Don't throw errors for typing indicators - they're not critical
     // Just log the error and continue
@@ -389,86 +349,6 @@ export async function markMessageAsSeen(
   }
   
   throw lastError;
-}
-
-export { isValidInstagramUserId };
-
-// Debug function to validate Instagram configuration
-export async function validateInstagramConfig(pageAccessToken: string): Promise<void> {
-  console.log("🔍 VALIDATING INSTAGRAM CONFIGURATION:");
-  
-  try {
-    // Get the current Instagram Business Account info
-    const response = await axios.get(
-      `${INSTAGRAM_API_BASE}/me?fields=id,name,username,followers_count`,
-      {
-        headers: {
-          'Authorization': `Bearer ${pageAccessToken}`,
-        },
-      }
-    );
-    
-    console.log("✅ Instagram Business Account Info:", {
-      id: response.data.id,
-      name: response.data.name,
-      username: response.data.username,
-      followers_count: response.data.followers_count
-    });
-    
-    console.log(`📧 Messages endpoint will be: ${INSTAGRAM_API_BASE}/${response.data.id}/messages`);
-    console.log(`📧 OR using /me/messages: ${INSTAGRAM_API_BASE}/me/messages`);
-    
-  } catch (error: any) {
-    console.error("❌ Failed to validate Instagram config:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message
-    });
-    
-    if (error.response?.status === 401) {
-      console.error("🚨 AUTHORIZATION ERROR: Check your IG_PAGE_TOKEN");
-      console.error("   The token might be:");
-      console.error("   1. Expired");
-      console.error("   2. For wrong Instagram account");
-      console.error("   3. Missing required permissions");
-    }
-  }
-}
-
-// Add function to check if a user can receive messages
-export async function checkUserCanReceiveMessages(recipientId: string, pageAccessToken: string): Promise<boolean> {
-  console.log(`🔍 CHECKING IF USER ${recipientId} CAN RECEIVE MESSAGES:`);
-  
-  try {
-    // Try to get user info (this will fail if user doesn't exist or can't receive messages)
-    const response = await axios.get(
-      `${INSTAGRAM_API_BASE}/${recipientId}?fields=id,username`,
-      {
-        headers: {
-          'Authorization': `Bearer ${pageAccessToken}`,
-        },
-      }
-    );
-    
-    console.log("✅ User exists and is accessible:", response.data);
-    return true;
-    
-  } catch (error: any) {
-    console.error("❌ User check failed:", {
-      status: error.response?.status,
-      data: error.response?.data
-    });
-    
-    if (error.response?.status === 400) {
-      console.error("🚨 USER ACCESS ERROR:");
-      console.error("   This usually means:");
-      console.error("   1. User hasn't messaged your business first");
-      console.error("   2. User is not in your test users list");
-      console.error("   3. User ID doesn't exist");
-    }
-    
-    return false;
-  }
 }
 
 
