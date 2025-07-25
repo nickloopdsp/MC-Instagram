@@ -1,7 +1,7 @@
 import axios from "axios";
 import crypto from "crypto";
 
-const INSTAGRAM_API_BASE = "https://graph.facebook.com/v21.0";
+const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -193,6 +193,25 @@ export async function sendInstagramMessage(
   
   if (lastError?.response?.data?.error) {
     console.error("Instagram API Error Details:", lastError.response.data.error);
+    
+    // Provide specific guidance for common errors
+    const error = lastError.response.data.error;
+    if (error.code === 100 && error.error_subcode === 2534014) {
+      console.error("🚨 INSTAGRAM ERROR ANALYSIS:");
+      console.error("   Error: User not found (Code 100, Subcode 2534014)");
+      console.error("   This means:");
+      console.error("   1. The recipient user doesn't exist");
+      console.error("   2. The user hasn't messaged your business account first");
+      console.error("   3. The user isn't in your app's test users list");
+      console.error("   4. Wrong Instagram Business Account/Page configuration");
+      console.error("   ");
+      console.error("📋 TROUBLESHOOTING STEPS:");
+      console.error("   1. Verify recipient ID is correct Instagram user ID");
+      console.error("   2. Check if user has messaged your business account before");
+      console.error("   3. Add user as test user in Meta Developer Console");
+      console.error("   4. Verify Instagram page is correctly connected to your app");
+      console.error(`   5. Test with a different user ID that has messaged you first`);
+    }
   }
   
   throw new Error(`Failed to send Instagram message after ${MAX_RETRIES} attempts: ${lastError.message}`);
@@ -370,6 +389,86 @@ export async function markMessageAsSeen(
   }
   
   throw lastError;
+}
+
+export { isValidInstagramUserId };
+
+// Debug function to validate Instagram configuration
+export async function validateInstagramConfig(pageAccessToken: string): Promise<void> {
+  console.log("🔍 VALIDATING INSTAGRAM CONFIGURATION:");
+  
+  try {
+    // Get the current Instagram Business Account info
+    const response = await axios.get(
+      `${INSTAGRAM_API_BASE}/me?fields=id,name,username,followers_count`,
+      {
+        headers: {
+          'Authorization': `Bearer ${pageAccessToken}`,
+        },
+      }
+    );
+    
+    console.log("✅ Instagram Business Account Info:", {
+      id: response.data.id,
+      name: response.data.name,
+      username: response.data.username,
+      followers_count: response.data.followers_count
+    });
+    
+    console.log(`📧 Messages endpoint will be: ${INSTAGRAM_API_BASE}/${response.data.id}/messages`);
+    console.log(`📧 OR using /me/messages: ${INSTAGRAM_API_BASE}/me/messages`);
+    
+  } catch (error: any) {
+    console.error("❌ Failed to validate Instagram config:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    
+    if (error.response?.status === 401) {
+      console.error("🚨 AUTHORIZATION ERROR: Check your IG_PAGE_TOKEN");
+      console.error("   The token might be:");
+      console.error("   1. Expired");
+      console.error("   2. For wrong Instagram account");
+      console.error("   3. Missing required permissions");
+    }
+  }
+}
+
+// Add function to check if a user can receive messages
+export async function checkUserCanReceiveMessages(recipientId: string, pageAccessToken: string): Promise<boolean> {
+  console.log(`🔍 CHECKING IF USER ${recipientId} CAN RECEIVE MESSAGES:`);
+  
+  try {
+    // Try to get user info (this will fail if user doesn't exist or can't receive messages)
+    const response = await axios.get(
+      `${INSTAGRAM_API_BASE}/${recipientId}?fields=id,username`,
+      {
+        headers: {
+          'Authorization': `Bearer ${pageAccessToken}`,
+        },
+      }
+    );
+    
+    console.log("✅ User exists and is accessible:", response.data);
+    return true;
+    
+  } catch (error: any) {
+    console.error("❌ User check failed:", {
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    if (error.response?.status === 400) {
+      console.error("🚨 USER ACCESS ERROR:");
+      console.error("   This usually means:");
+      console.error("   1. User hasn't messaged your business first");
+      console.error("   2. User is not in your test users list");
+      console.error("   3. User ID doesn't exist");
+    }
+    
+    return false;
+  }
 }
 
 

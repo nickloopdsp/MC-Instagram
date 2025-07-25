@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { mcBrain, type ConversationContext } from "./services/mcBrain";
-import { sendInstagramMessage, verifyWebhookSignature, markMessageAsSeen } from "./services/instagram";
+import { sendInstagramMessage, verifyWebhookSignature, markMessageAsSeen, validateInstagramConfig, checkUserCanReceiveMessages } from "./services/instagram";
 import { loopGuidance } from "./services/loopApi";
 import { URLProcessor } from "./services/urlProcessor";
 
@@ -417,6 +417,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error tracking click:", error);
       res.status(500).json({ error: "Failed to track click" });
+    }
+  });
+
+  // Debug endpoint for Instagram configuration
+  app.get("/api/debug-instagram", async (req: Request, res: Response) => {
+    const pageAccessToken = process.env.IG_PAGE_TOKEN;
+    
+    if (!pageAccessToken) {
+      res.status(500).json({ error: "IG_PAGE_TOKEN not configured" });
+      return;
+    }
+    
+    try {
+      console.log("🧪 DEBUG: Testing Instagram configuration...");
+      
+      // Validate Instagram configuration
+      await validateInstagramConfig(pageAccessToken);
+      
+      // Test specific user if provided
+      const testUserId = req.query.user_id as string;
+      let userCanReceiveMessages = null;
+      
+      if (testUserId) {
+        console.log(`🧪 DEBUG: Testing user ${testUserId}...`);
+        userCanReceiveMessages = await checkUserCanReceiveMessages(testUserId, pageAccessToken);
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Instagram configuration validated - check console logs",
+        userCanReceiveMessages,
+        testUserId: testUserId || null
+      });
+      
+    } catch (error) {
+      console.error("Instagram debug error:", error);
+      res.status(500).json({ 
+        error: "Failed to debug Instagram configuration",
+        details: error instanceof Error ? error.message : error
+      });
     }
   });
 
