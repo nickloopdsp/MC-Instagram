@@ -12,8 +12,13 @@ function getOpenAI(): OpenAI {
   if (!openai) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
     console.log("Initializing OpenAI with API key:", apiKey ? `${apiKey.substring(0, 10)}...` : "NOT FOUND");
+    
+    if (!apiKey || apiKey === "placeholder_key") {
+      throw new Error("OPENAI_API_KEY is required but not configured");
+    }
+    
     openai = new OpenAI({ 
-      apiKey: apiKey || "placeholder_key"
+      apiKey: apiKey
     });
   }
   return openai;
@@ -323,26 +328,26 @@ Conversational response addressing the user's needs directly. Only include ACTIO
         }
       ];
 
-      // Create the completion request with functions
+      // Create the completion request with tools (new format)
       const response = await getOpenAI().chat.completions.create({
         model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
         messages,
-        functions: OPTIMIZED_OPENAI_FUNCTIONS,
-        function_call: "auto", // Let the model decide when to use functions
+        tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
+        tool_choice: "auto", // Let the model decide when to use functions
         max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
         temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
       });
 
       let aiResponse = response.choices[0].message.content || `Thanks for your message: "${userText}". I'm here to help!`;
       
-      // Handle function calls if any
-      if (response.choices[0].message.function_call) {
-        const functionCall = response.choices[0].message.function_call;
-        console.log("Function call requested:", functionCall.name, functionCall.arguments);
+      // Handle tool calls if any
+      if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
+        const toolCall = response.choices[0].message.tool_calls[0];
+        console.log("Tool call requested:", toolCall.function.name, toolCall.function.arguments);
         
         try {
-          const args = JSON.parse(functionCall.arguments);
-          const functionResult = await optimizedFunctionHandlers.handleFunction(functionCall.name, args);
+          const args = JSON.parse(toolCall.function.arguments);
+          const functionResult = await optimizedFunctionHandlers.handleFunction(toolCall.function.name, args);
           
           // For optimized functions, the result includes routing info
           if (functionResult.deep_link) {
@@ -375,7 +380,7 @@ Conversational response addressing the user's needs directly. Only include ACTIO
               'identify_user_need': 'none'
             };
             
-            actionData.intent = functionToIntent[functionCall.name] || 'chat.generic';
+            actionData.intent = functionToIntent[toolCall.function.name] || 'chat.generic';
             
             // Add the ACTION block
             aiResponse += `\n\n[ACTION]\n${JSON.stringify(actionData, null, 2)}\n[/ACTION]`;
