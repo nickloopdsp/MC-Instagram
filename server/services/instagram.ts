@@ -204,6 +204,7 @@ export async function sendTypingIndicator(
   pageAccessToken: string
 ): Promise<void> {
   console.log(`🔍 TYPING INDICATOR DEBUG: Starting ${action} for recipient ${recipientId}`);
+  console.log(`🔍 TYPING INDICATOR DEBUG: Environment check - DEBUG_MODE: ${process.env.DEBUG_MODE}, PAGE_TOKEN available: ${!!pageAccessToken}`);
   
   // Validate recipient ID format
   if (!isValidInstagramUserId(recipientId)) {
@@ -222,6 +223,7 @@ export async function sendTypingIndicator(
     console.log("🚫 DEBUG MODE: Would send typing indicator:", {
       recipientId,
       action,
+      note: "Set DEBUG_MODE=false in Railway to enable real API calls"
     });
     return;
   }
@@ -230,7 +232,7 @@ export async function sendTypingIndicator(
 
   // Rate limiting check
   if (!rateLimiter.canMakeRequest()) {
-    console.warn("Rate limit exceeded, skipping typing indicator");
+    console.warn("⚠️ Rate limit exceeded, skipping typing indicator");
     return;
   }
 
@@ -240,6 +242,8 @@ export async function sendTypingIndicator(
   
   console.log(`👨‍💻 Sending typing indicator (${action}):`, {
     recipientId: recipientIdStr,
+    endpoint: `https://graph.instagram.com/v21.0/me/messages`,
+    payload: { recipient: { id: recipientIdStr }, sender_action: action }
   });
   
   const payload = {
@@ -261,14 +265,31 @@ export async function sendTypingIndicator(
     );
     
     console.log(`✅ Typing indicator (${action}) sent successfully:`, response.data);
+    console.log(`🎯 SUCCESS: Instagram should now show "${action === 'typing_on' ? 'MC is typing...' : 'typing indicator off'}" in the DM`);
     rateLimiter.recordRequest();
     
   } catch (error: any) {
     console.error(`❌ Failed to send typing indicator (${action}):`, {
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data
+      data: error.response?.data,
+      recipientId,
+      action
     });
+    
+    // Enhanced error logging for common issues
+    if (error.response?.status === 400) {
+      console.error("🚨 INSTAGRAM API ERROR 400: Likely causes:");
+      console.error("  1. Invalid recipient ID format (must be numeric, 15-17 digits)");
+      console.error("  2. User has not messaged your Instagram business account first");
+      console.error("  3. Instagram app permissions missing");
+    }
+    
+    if (error.response?.status === 401) {
+      console.error("🚨 INSTAGRAM API ERROR 401: Authentication failed");
+      console.error("  1. Check IG_PAGE_TOKEN is valid and not expired");
+      console.error("  2. Verify token has correct permissions");
+    }
     
     // Don't throw errors for typing indicators - they're not critical
     // Just log the error and continue

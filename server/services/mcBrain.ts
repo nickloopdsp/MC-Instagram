@@ -3,6 +3,7 @@ import { MUSIC_CONCIERGE_CONFIG } from "../config/musicConcierge";
 import { URLProcessor, type ExtractedContent } from "./urlProcessor";
 import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysis";
 import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
+import { ClaudeService, claudeService } from "./claude";
 
 // TODO: replace with real GPT call
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -316,6 +317,12 @@ Conversational response addressing the user's needs directly. Only include ACTIO
         userMessage += imageContext;
       }
 
+      // Choose AI provider based on question type
+      const providerChoice = ClaudeService.chooseProvider(userText, extractedContent);
+      console.log(`AI Provider Selected: ${providerChoice.provider.toUpperCase()}`);
+      console.log(`Reason: ${providerChoice.reason}`);
+      
+      // Prepare identical conversation context for both providers
       const messages: Array<{role: "system" | "user" | "assistant", content: string}> = [
         {
           role: "system",
@@ -327,21 +334,43 @@ Conversational response addressing the user's needs directly. Only include ACTIO
           content: userMessage
         }
       ];
-
-      // Create the completion request with tools (new format)
-      const response = await getOpenAI().chat.completions.create({
-        model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
-        messages,
-        tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-        tool_choice: "auto", // Let the model decide when to use functions
-        max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
-        temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
-      });
-
-      let aiResponse = response.choices[0].message.content || `Thanks for your message: "${userText}". I'm here to help!`;
       
-      // Handle tool calls if any
-      if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
+      let aiResponse: string;
+      
+      if (providerChoice.provider === 'claude') {
+        // Use Claude for response - convert message format for Claude API
+        const claudeMessages = messages
+          .filter(msg => msg.role !== "system") // Claude takes system prompt separately
+          .map(msg => ({
+            role: msg.role as "user" | "assistant",
+            content: msg.content
+          }));
+        
+        aiResponse = await claudeService.generateResponse(
+          systemPrompt,
+          claudeMessages,
+          MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
+          MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
+        );
+        
+        // Add provider info to response for transparency
+        aiResponse = `${aiResponse}\n\n[Powered by Claude]`;
+        
+      } else {
+        // Use OpenAI with function calling - use messages as-is
+        const response = await getOpenAI().chat.completions.create({
+          model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
+          messages,
+          tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
+          tool_choice: "auto", // Let the model decide when to use functions
+          max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
+          temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
+        });
+
+        aiResponse = response.choices[0].message.content || `Thanks for your message: "${userText}". I'm here to help!`;
+        
+        // Handle tool calls if any (only for OpenAI)
+        if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
         const toolCall = response.choices[0].message.tool_calls[0];
         console.log("Tool call requested:", toolCall.function.name, toolCall.function.arguments);
         
@@ -412,6 +441,7 @@ Conversational response addressing the user's needs directly. Only include ACTIO
           console.error("Error handling function call:", error);
         }
       }
+      } // End of else block for OpenAI provider
       
       // Remove the automatic dashboard prompting after 3 messages
       // if (sameTopicCount >= 2 && currentTopic && !aiResponse.includes('Loop dashboard')) {

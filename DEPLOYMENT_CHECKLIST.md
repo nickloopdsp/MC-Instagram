@@ -24,6 +24,7 @@ IG_APP_SECRET=           # App secret for signature verification
 
 # AI Processing
 OPENAI_API_KEY=          # OpenAI API key for GPT-4o
+CLAUDE_API_KEY=          # Claude API key for Claude Opus
 
 # Database
 DATABASE_URL=            # PostgreSQL connection string

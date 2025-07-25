@@ -1,6 +1,11 @@
 # Instagram DM → Loop MC Gateway (Enhanced)
 
-A guidance-focused Instagram DM bot that receives messages via Meta webhooks, processes them through OpenAI GPT-4o with **vision capabilities**, and guides users to the Loop dashboard with intelligent **Instagram URL processing** and **image analysis**.
+A guidance-focused Instagram DM bot that receives messages via Meta webhooks, processes them through **OpenAI GPT-4o or Claude Opus** with **vision capabilities**, and guides users to the Loop dashboard with intelligent **Instagram URL processing** and **image analysis**.
+
+## 🤖 **Dual AI Integration**
+The system now intelligently selects between two AI providers, both acting as MC (Music Concierge):
+- **Claude 3.5 Sonnet**: For analytical music research, creative content writing, and strategic planning
+- **OpenAI GPT-4o**: For actionable music advice, function calling, and content analysis
 
 ## 🎯 **Enhanced Features (Latest Update)**
 

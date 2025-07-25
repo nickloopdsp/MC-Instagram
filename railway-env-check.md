@@ -12,6 +12,7 @@ NODE_ENV=production
 ### Additional Variables (if needed):
 ```
 OPENAI_API_KEY=your_openai_api_key
+CLAUDE_API_KEY=your_claude_api_key
 LOOP_API_TOKEN=your_loop_api_token
 SOUNDCHARTS_APP_ID=LOOP_A1DFF434
 SOUNDCHARTS_API_KEY=bb1bd7aa455a1c5f
