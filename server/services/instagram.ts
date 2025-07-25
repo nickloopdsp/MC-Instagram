@@ -1,7 +1,7 @@
 import axios from "axios";
 import crypto from "crypto";
 
-const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
+const INSTAGRAM_API_BASE = "https://graph.facebook.com/v21.0";
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -155,7 +155,7 @@ export async function sendInstagramMessage(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await axios.post(
-        `https://graph.instagram.com/v21.0/me/messages`,
+        `${INSTAGRAM_API_BASE}/me/messages`,
         payload,
         {
           headers: {
@@ -242,7 +242,7 @@ export async function sendTypingIndicator(
   
   console.log(`👨‍💻 Sending typing indicator (${action}):`, {
     recipientId: recipientIdStr,
-    endpoint: `https://graph.instagram.com/v21.0/me/messages`,
+    endpoint: `${INSTAGRAM_API_BASE}/me/messages`,
     payload: { recipient: { id: recipientIdStr }, sender_action: action }
   });
   
@@ -253,7 +253,7 @@ export async function sendTypingIndicator(
 
   try {
     const response = await axios.post(
-      `https://graph.instagram.com/v21.0/me/messages`,
+      `${INSTAGRAM_API_BASE}/me/messages`,
       payload,
       {
         headers: {

@@ -211,7 +211,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Get conversation context for this user (now includes the message we just stored)
               const conversationContext = await storage.getConversationContext(senderId);
 
-              // Send typing indicator to show bot is processing
+              // 1. FIRST: Mark the incoming message as "seen" immediately 
+              if (process.env.IG_PAGE_TOKEN) {
+                const { markMessageAsSeen } = await import("./services/instagram");
+                await markMessageAsSeen(senderId, process.env.IG_PAGE_TOKEN);
+              }
+
+              // 2. THEN: Send typing indicator to show bot is processing
               if (process.env.IG_PAGE_TOKEN) {
                 const { sendTypingIndicator } = await import("./services/instagram");
                 await sendTypingIndicator(senderId, 'typing_on', process.env.IG_PAGE_TOKEN);

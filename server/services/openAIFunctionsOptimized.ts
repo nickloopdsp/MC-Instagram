@@ -160,13 +160,13 @@ export const OPTIMIZED_OPENAI_FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.
   },
   {
     name: "search_web",
-    description: "Search the internet for current information about music industry topics, news, trends, or any topic the user asks about. Use when user asks questions that require recent information or research.",
+    description: "Search for RECENT or CURRENT information about music industry topics. ONLY use when user explicitly asks for latest/recent/current/new information, not for general questions about well-known artists or basic music topics.",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Search query to look up information about"
+          description: "Search query to look up current information about"
         },
         topic_context: {
           type: "string",
@@ -187,11 +187,16 @@ export class OptimizedFunctionHandlers {
     
     switch (functionName) {
       case "save_to_moodboard":
-        // Only return routing info if user explicitly wants to save/organize
+        // Generate deep link to moodboard with content
+        const moodboardLink = args.content_url 
+          ? `https://app.loop.com/open?widget=moodboard&utm=ig_dm&action=add&content=${encodeURIComponent(args.content_url)}`
+          : `https://app.loop.com/open?widget=moodboard&utm=ig_dm&action=add`;
+          
         return {
           success: true,
           action: "content_saved",
-          message: "I've noted that content for you! It looks like great inspiration."
+          message: `Perfect! I've saved that ${args.content_type || 'content'} to your moodboard. Great inspiration!`,
+          deep_link: moodboardLink
         };
         
       case "search_music_contacts":
