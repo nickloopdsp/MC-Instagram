@@ -32,7 +32,7 @@ export interface ImageAnalysisResult {
     visual_appeal?: string;
     brand_alignment?: string;
   };
-  actionableAdvice?: string[];
+  actionableAdvice: string[]; // Always return array so callers can safely .map()
   error?: string;
 }
 
@@ -132,12 +132,31 @@ export class VisionAnalysisService {
         temperature: 0.7
       });
 
-      const call = res.choices[0].message.function_call;
-      if (!call?.arguments) {
-        throw new Error("No function_call.arguments in response");
-      }
+      // Debug logging for model decision path
+      console.log("🔍 GPT-4o Vision Response:", JSON.stringify({
+        model: res.model,
+        usage: res.usage,
+        choice: {
+          finish_reason: res.choices[0]?.finish_reason,
+          has_function_call: !!res.choices[0]?.message?.function_call,
+          has_content: !!res.choices[0]?.message?.content,
+          function_name: res.choices[0]?.message?.function_call?.name
+        }
+      }, null, 2));
 
-      return JSON.parse(call.arguments) as ImageAnalysisResult;
+      // Add graceful fallback when function isn't called
+      const msg = res.choices[0]?.message;
+      if (msg?.function_call?.arguments) {
+        return JSON.parse(msg.function_call.arguments) as ImageAnalysisResult;
+      }
+      
+      // Fallback to content or a minimal object
+      const text = msg?.content ?? "No analysis returned";
+      console.log("⚠️ Model didn't call function, using fallback:", text);
+      return { 
+        description: text, 
+        actionableAdvice: [] // Always return array so callers can safely .map()
+      };
     } catch (err: any) {
       console.error("Error analyzing image:", err);
       return {

@@ -159,13 +159,35 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   if (allImages.length > 0) {
     console.log(`Analyzing ${allImages.length} image(s) (${imageAttachments.length} attachments, ${instagramImages.length} from Instagram)...`);
     try {
+      // Import MediaProxyService for making images publicly accessible
+      const { MediaProxyService } = await import('./mediaProxy');
+      
       for (const image of allImages) {
         if (image.url) {
-          const analysis = await VisionAnalysisService.analyzeImage(
-            image.url, 
-            image.context || userText // Provide context
+          console.log(`📎 Processing image: ${image.url.substring(0, 100)}...`);
+          
+          // Make the image publicly accessible (handles Instagram DM URLs)
+          const publicUrl = await MediaProxyService.makeImagePubliclyAccessible(
+            image.url,
+            process.env.IG_PAGE_TOKEN // Use page token for Instagram Graph API
           );
-          imageAnalysis.push(analysis);
+          
+          if (publicUrl) {
+            console.log(`📎 Image made accessible, analyzing...`);
+            const analysis = await VisionAnalysisService.analyzeImage(
+              publicUrl, 
+              image.context || userText // Provide context
+            );
+            imageAnalysis.push(analysis);
+          } else {
+            console.log(`❌ Could not make image accessible: ${image.url}`);
+            // Add a fallback analysis entry
+            imageAnalysis.push({
+              description: "Unable to access image for analysis",
+              actionableAdvice: [],
+              error: "Image URL not publicly accessible"
+            });
+          }
         }
       }
       console.log("Image analysis completed:", JSON.stringify(imageAnalysis, null, 2));
