@@ -85,17 +85,17 @@ const processImageAnalysisSpec = {
 };
 
 function buildImagePrompt(context?: string): string {
-  return `You are MC, Loop's Music Concierge. Analyze this image and provide insights for a music artist.
+  return `You are MC, Loop's Music Concierge. You can view and analyze images! Look at this image and provide helpful feedback for a music artist.
 
 ${context ? `Context: ${context}` : ''}
 
-Please provide:
-1. A detailed description of what you see
-2. Music-related context (genre, mood, instruments, setting, aesthetics)
-3. Marketing insights (engagement potential, target audience, visual appeal, brand alignment)
-4. 3-5 actionable pieces of advice for the artist
+Analyze the image and respond conversationally like you're texting a friend. Describe what you see and give specific music career advice about:
+- Visual branding and aesthetics
+- Performance or studio setup suggestions
+- Marketing and fan engagement tips
+- Genre and mood insights
 
-Focus on how this image relates to music career development, branding, performance, or fan engagement.`;
+Keep it short (2-3 sentences max), friendly, and music-focused. Ask a follow-up question to keep the conversation going.`;
 }
 
 export class VisionAnalysisService {
@@ -127,19 +127,32 @@ export class VisionAnalysisService {
             ]
           }
         ],
-        functions: [processImageAnalysisSpec],
-        function_call: { name: "process_image_analysis" },
         max_tokens: 1000,
         temperature: 0.7
       });
 
-      const functionCall = response.choices[0].message.function_call;
-      if (!functionCall || !functionCall.arguments) {
-        throw new Error("No function call response received");
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error("No response content received");
       }
 
-      const analysisData = JSON.parse(functionCall.arguments);
-      return analysisData as ImageAnalysisResult;
+      // Parse the response as a simple text description
+      // Try to extract structured data if possible, otherwise use the full text
+      let analysisData: ImageAnalysisResult;
+      try {
+        // If the response is JSON, parse it
+        analysisData = JSON.parse(content);
+      } catch {
+        // Otherwise, treat it as a description
+        analysisData = {
+          description: content,
+          musicContext: undefined,
+          marketingInsights: undefined,
+          actionableAdvice: undefined
+        };
+      }
+      
+      return analysisData;
       
     } catch (error) {
       console.error("Error analyzing image:", error);
