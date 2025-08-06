@@ -104,12 +104,12 @@ export class VisionAnalysisService {
    * Analyze an image using OpenAI's vision capabilities
    */
   static async analyzeImage(imageUrl: string, context?: string): Promise<ImageAnalysisResult> {
-    try {
-      const prompt = buildImagePrompt(context);
+    const prompt = buildImagePrompt(context);
+    const openai = getOpenAI();
 
-      // Build request parameters (use GPT-4o for vision analysis - o3 doesn't support vision)
-      const requestParams: any = {
-        model: "gpt-4o", // GPT-4o has proven vision capabilities
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // GPT-4o has vision capabilities
         messages: [
           {
             role: "user",
@@ -120,47 +120,41 @@ export class VisionAnalysisService {
               },
               {
                 type: "image_url",
-                image_url: {
-                  url: imageUrl,
-                  detail: "high"
+                image_url: { 
+                  url: imageUrl, 
+                  detail: "high" 
                 }
               }
             ]
           }
         ],
-        max_tokens: 1000, // GPT-4o uses max_tokens
-        temperature: 0.7 // GPT-4o supports temperature control
-      };
-      
-      const response = await getOpenAI().chat.completions.create(requestParams);
+        // Fix: Use function calling for structured output (tools format)
+        tools: [{ type: "function", function: processImageAnalysisSpec }],
+        tool_choice: { type: "function", function: { name: "process_image_analysis" } },
+        max_tokens: 500,
+        temperature: 0.7
+      });
 
-      const content = response.choices[0].message.content;
-      if (!content) {
-        throw new Error("No response content received");
+      // Fix: Extract from tool_calls instead of function_call (new format)
+      const toolCalls = response.choices[0].message.tool_calls;
+      if (!toolCalls || toolCalls.length === 0) {
+        throw new Error("No tool_calls in response");
       }
 
-      // Parse the response as a simple text description
-      // Try to extract structured data if possible, otherwise use the full text
-      let analysisData: ImageAnalysisResult;
-      try {
-        // If the response is JSON, parse it
-        analysisData = JSON.parse(content);
-      } catch {
-        // Otherwise, treat it as a description
-        analysisData = {
-          description: content,
-          musicContext: undefined,
-          marketingInsights: undefined,
-          actionableAdvice: undefined
-        };
+      const functionCall = toolCalls[0];
+      if (functionCall.type !== "function" || !functionCall.function.arguments) {
+        throw new Error("Invalid tool call response format");
       }
-      
+
+      // Parse the structured JSON response
+      const analysisData = JSON.parse(functionCall.function.arguments) as ImageAnalysisResult;
       return analysisData;
       
     } catch (error) {
       console.error("Error analyzing image:", error);
       return {
         description: "Unable to analyze image at this time",
+        actionableAdvice: [],
         error: `Analysis failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
