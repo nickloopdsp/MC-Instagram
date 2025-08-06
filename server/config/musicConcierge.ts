@@ -98,6 +98,15 @@ export const MUSIC_CONCIERGE_CONFIG = {
     model: 'o3', // GPT o3 with enhanced reasoning and vision capabilities
     maxTokens: 500, // Increased for more detailed music advice
     temperature: 0.7
+  },
+
+  // Instagram API configuration
+  INSTAGRAM_CONFIG: {
+    // App Access Token for oEmbed API (format: FB_APP_ID|FB_APP_SECRET)
+    appAccessToken: process.env.FB_APP_TOKEN || `${process.env.FB_APP_ID}|${process.env.FB_APP_SECRET}`,
+    pageAccessToken: process.env.IG_PAGE_TOKEN,
+    // Enable caption extraction from shared posts
+    enableCaptionExtraction: true
   }
 };
 

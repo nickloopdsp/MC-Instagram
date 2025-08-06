@@ -96,49 +96,85 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
     }
   }
 
-  // Check for Instagram content in media attachments
-  // Instagram often shares content as media attachments with specific patterns
+  // Process Instagram content in media attachments with caption extraction
+  const { InstagramPostResolver } = await import('./instagramPostResolver');
+  const { MUSIC_CONCIERGE_CONFIG } = await import('../config/musicConcierge');
+  
+  const appAccessToken = MUSIC_CONCIERGE_CONFIG.INSTAGRAM_CONFIG.appAccessToken;
+  const pageAccessToken = MUSIC_CONCIERGE_CONFIG.INSTAGRAM_CONFIG.pageAccessToken;
+  
   for (const attachment of mediaAttachments) {
     const title = attachment.title || '';
     
-    // Detect Instagram content by multiple patterns:
-    // 1. Explicit Instagram types (ig_reel)
-    // 2. Titles with @ symbols
-    // 3. Titles that look like usernames (alphanumeric, often start with lowercase)
-    // 4. Titles mentioning common Instagram content patterns
+    // Detect Instagram content by multiple patterns + URL/ID patterns
     const isInstagramContent = 
       attachment.type === 'ig_reel' ||
       title.includes('@') ||
       /^[a-z][a-z0-9_]{2,}/.test(title.split(' ')[0]) || // Username pattern like "yelova911"
       title.toLowerCase().includes('instagram') ||
       title.toLowerCase().includes('reel') ||
-      title.toLowerCase().includes('story');
+      title.toLowerCase().includes('story') ||
+      InstagramPostResolver.looksLikeAttachmentId(attachment.url) ||
+      InstagramPostResolver.isInstagramPermalink(attachment.url);
     
     if (isInstagramContent) {
-      console.log(`Instagram media detected in attachment: ${attachment.title}`);
+      console.log(`📎 Processing Instagram content: ${attachment.title || attachment.url}`);
       
-      // Create a synthetic Instagram content entry
+      // Try to resolve caption and metadata from Instagram
+      let igMeta = null;
+      if (attachment.url && MUSIC_CONCIERGE_CONFIG.INSTAGRAM_CONFIG.enableCaptionExtraction) {
+        igMeta = await InstagramPostResolver.resolvePost(
+          attachment.url,
+          pageAccessToken,
+          appAccessToken
+        );
+      }
+
+      // Create content with resolved caption if available
       const syntheticContent: ExtractedContent = {
-        type: attachment.type === 'ig_reel' ? 'instagram_reel' : 'instagram_post',
+        type: igMeta?.source === 'oembed' ? 'instagram_post' : 
+              (attachment.type === 'ig_reel' ? 'instagram_reel' : 'instagram_post'),
         url: attachment.url || '',
-        title: attachment.title || 'Instagram content',
-        description: `Instagram content shared via DM: ${attachment.title}`,
-        mediaUrls: attachment.url ? [attachment.url] : undefined,
-        isVideo: attachment.type === 'video' || attachment.type === 'ig_reel'
+        title: igMeta?.author_name ? `Post by ${igMeta.author_name}` : (attachment.title || 'Instagram content'),
+        description: igMeta?.caption || (
+          InstagramPostResolver.isInstagramPermalink(attachment.url) 
+            ? "Instagram post (caption not accessible - share more details for better feedback!)"
+            : `Instagram content shared via DM: ${attachment.title}`
+        ),
+        mediaUrls: [
+          igMeta?.media_url,
+          igMeta?.thumbnail_url,
+          attachment.url
+        ].filter(Boolean) as string[],
+        isVideo: igMeta?.media_type === 'VIDEO' || igMeta?.media_type === 'REEL' || 
+                 attachment.type === 'video' || attachment.type === 'ig_reel'
       };
+      
+      console.log(`📎 Resolved Instagram content:`, {
+        hasCaption: !!igMeta?.caption,
+        captionLength: igMeta?.caption?.length || 0,
+        mediaUrls: syntheticContent.mediaUrls.length,
+        isVideo: syntheticContent.isVideo,
+        source: igMeta?.source || 'attachment'
+      });
       
       extractedContent.push(syntheticContent);
     }
   }
 
-  // Collect images from Instagram posts first
+  // Collect images from Instagram posts and video thumbnails
   const instagramImages: Array<{url: string, context?: string}> = [];
   for (const content of extractedContent) {
-    if (content.type.startsWith('instagram_') && content.mediaUrls && !content.isVideo) {
+    if (content.type.startsWith('instagram_') && content.mediaUrls) {
       content.mediaUrls.forEach(url => {
+        // For videos/reels, analyze thumbnail; for images, analyze directly
+        const analysisContext = content.isVideo 
+          ? `Instagram ${content.type.includes('reel') ? 'reel' : 'video'} thumbnail. Caption: ${content.description}`
+          : `Instagram post. Caption: ${content.description}`;
+          
         instagramImages.push({
           url,
-          context: content.description || content.title || 'Instagram post image'
+          context: analysisContext
         });
       });
     }
