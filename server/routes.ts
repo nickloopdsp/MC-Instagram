@@ -351,6 +351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         claude: {
           configured: !!(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY),
           model: "claude-3-7-sonnet-20250219",
+          status: "TEMPORARILY DISABLED",
           keyPreview: (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY) ? 
             `${(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY)!.substring(0, 8)}...` : "NOT SET"
         }

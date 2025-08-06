@@ -35,8 +35,14 @@ export class ClaudeService {
   /**
    * Determine which AI provider to use based on the music industry question type
    * Both models act as MC (Music Concierge) and help with music career questions
+   * 
+   * TEMPORARILY DISABLED: Claude functionality is commented out to use only GPT o3
    */
   static chooseProvider(userText: string, extractedContent: any[] = []): AIProviderChoice {
+    // TEMPORARILY: Always use OpenAI/GPT o3 for all requests
+    return { provider: 'openai', reason: 'Using GPT o3 for all requests (Claude temporarily disabled)' };
+
+    /* CLAUDE FUNCTIONALITY TEMPORARILY DISABLED - UNCOMMENT TO RE-ENABLE
     const text = userText.toLowerCase();
     
     // ALWAYS use OpenAI for function calling requests (Claude doesn't support functions)
@@ -82,6 +88,7 @@ export class ClaudeService {
     
     // Default to OpenAI for general music conversation to maintain consistency
     return { provider: 'openai', reason: 'General music conversation - OpenAI maintains music concierge consistency' };
+    */
   }
 
   /**

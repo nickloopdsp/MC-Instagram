@@ -574,14 +574,16 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         console.error("🔑 OpenAI API Key Issue - Check Railway environment variables");
         return "Hey! I'm MC, your music concierge. I'm having API key issues but I'm here to help with your music career. What can I assist you with?";
       }
+      if (error.message.includes('model') || error.message.includes('o3')) {
+        console.error("🤖 GPT o3 Model Issue - Check model compatibility");
+        return "Hey! I'm MC, your music concierge. I'm having model compatibility issues but I'm here to help with your music career. What can I assist you with?";
+      }
+      /* CLAUDE ERROR HANDLING TEMPORARILY DISABLED
       if (error.message.includes('CLAUDE_API_KEY')) {
         console.error("🔑 Claude API Key Issue - Check Railway environment variables");
         return "Hey! I'm MC, your music concierge. I'm having API key issues but I'm here to help with your music career. What can I assist you with?";
       }
-      if (error.message.includes('model') || error.message.includes('o3') || error.message.includes('claude')) {
-        console.error("🤖 AI Model Issue - Check model compatibility");
-        return "Hey! I'm MC, your music concierge. I'm having model compatibility issues but I'm here to help with your music career. What can I assist you with?";
-      }
+      */
     }
     
     // Generic fallback
