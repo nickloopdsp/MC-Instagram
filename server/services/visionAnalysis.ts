@@ -184,6 +184,7 @@ export class VisionAnalysisService {
       // Return error results for all images if parallel processing fails
       return imageUrls.map(() => ({
         description: "Failed to analyze this image",
+        actionableAdvice: [], // Required property for ImageAnalysisResult
         error: `Batch analysis failed: ${error instanceof Error ? error.message : String(error)}`
       }));
     }
@@ -198,6 +199,7 @@ export class VisionAnalysisService {
     if (validResults.length === 0) {
       return {
         description: "Unable to analyze any of the shared images",
+        actionableAdvice: [], // Required property for ImageAnalysisResult
         error: "All image analyses failed"
       };
     }
