@@ -95,7 +95,7 @@ export const MUSIC_CONCIERGE_CONFIG = {
 
   // OpenAI model configuration
   AI_CONFIG: {
-    model: 'gpt-4o',
+    model: 'o4-mini-high', // Latest OpenAI model with enhanced reasoning and capabilities
     maxTokens: 500, // Increased for more detailed music advice
     temperature: 0.7
   }

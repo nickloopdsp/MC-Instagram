@@ -5,8 +5,8 @@ import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysi
 import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
 import { ClaudeService, claudeService } from "./claude";
 
-// TODO: replace with real GPT call
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+// Using o4-mini-high for enhanced reasoning, web search and vision capabilities
+// Latest OpenAI model with improved performance and multimodal understanding
 let openai: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {

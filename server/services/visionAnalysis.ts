@@ -108,7 +108,7 @@ export class VisionAnalysisService {
       const prompt = buildImagePrompt(context);
 
       const response = await getOpenAI().chat.completions.create({
-        model: "gpt-4o", // GPT-4 with vision capabilities
+        model: "o4-mini-high", // Latest OpenAI model with enhanced reasoning and vision capabilities
         messages: [
           {
             role: "user",
