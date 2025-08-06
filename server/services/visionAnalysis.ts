@@ -113,9 +113,11 @@ export class VisionAnalysisService {
         messages: [
           {
             role: "user",
-            content: prompt,
-            // ← Pass the image here, not inside `content`
-            attachments: [
+            content: [
+              {
+                type: "text",
+                text: prompt
+              },
               {
                 type: "image_url",
                 image_url: { url: imageUrl, detail: "high" }
