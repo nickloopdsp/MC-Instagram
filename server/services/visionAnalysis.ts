@@ -107,8 +107,9 @@ export class VisionAnalysisService {
     try {
       const prompt = buildImagePrompt(context);
 
-      const response = await getOpenAI().chat.completions.create({
-        model: "gpt-4o", // GPT-4o with proven vision capabilities
+      // Build request parameters (o3 model has specific requirements)
+      const requestParams: any = {
+        model: "o3", // GPT o3 with enhanced reasoning and vision capabilities
         messages: [
           {
             role: "user",
@@ -127,9 +128,12 @@ export class VisionAnalysisService {
             ]
           }
         ],
-        max_tokens: 1000,
-        temperature: 0.7
-      });
+        max_completion_tokens: 1000 // o3 uses max_completion_tokens
+      };
+      
+      // o3 only supports default temperature (1), so don't set it
+      
+      const response = await getOpenAI().chat.completions.create(requestParams);
 
       const content = response.choices[0].message.content;
       if (!content) {

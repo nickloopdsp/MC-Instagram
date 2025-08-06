@@ -95,7 +95,7 @@ export const MUSIC_CONCIERGE_CONFIG = {
 
   // OpenAI model configuration
   AI_CONFIG: {
-    model: 'gpt-4o', // GPT-4o with proven vision and reasoning capabilities
+    model: 'o3', // GPT o3 with enhanced reasoning and vision capabilities
     maxTokens: 500, // Increased for more detailed music advice
     temperature: 0.7
   }

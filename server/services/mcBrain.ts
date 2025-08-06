@@ -5,8 +5,8 @@ import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysi
 import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
 import { ClaudeService, claudeService } from "./claude";
 
-// Using GPT-4o for proven vision, reasoning, and web search capabilities
-// Reliable OpenAI model with strong multimodal understanding and function calling
+// Using GPT o3 for enhanced reasoning, vision, and web search capabilities
+// Latest OpenAI model with superior intelligence and multimodal understanding
 let openai: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
@@ -407,14 +407,21 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         console.log(`User message length: ${userMessage.length} chars`);
         
         try {
-          const response = await getOpenAI().chat.completions.create({
+          // Build request parameters (o3 model has specific requirements)
+          const requestParams: any = {
             model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
             messages,
             tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
             tool_choice: "auto", // Let the model decide when to use functions
-            max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
-            temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
-          });
+            max_completion_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens // o3 uses max_completion_tokens
+          };
+          
+          // Only add temperature for non-o3 models (o3 only supports default temperature of 1)
+          if (!MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model.startsWith('o3')) {
+            requestParams.temperature = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature;
+          }
+          
+          const response = await getOpenAI().chat.completions.create(requestParams);
           
           console.log(`OpenAI Response status: ${response.choices?.[0]?.finish_reason}`);
           console.log(`Response content length: ${response.choices?.[0]?.message?.content?.length || 0} chars`);

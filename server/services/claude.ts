@@ -5,6 +5,15 @@ export interface AIProviderChoice {
   reason: string;
 }
 
+/**
+ * Claude 3.7 Sonnet Features:
+ * - Hybrid reasoning (fast + extended thinking modes)
+ * - 200k token context window  
+ * - State-of-the-art performance on complex reasoning tasks
+ * - Enhanced coding capabilities and multimodal understanding
+ * - Superior analytical capabilities for music industry research
+ */
+
 export class ClaudeService {
   private anthropic: Anthropic | null = null;
 
@@ -88,7 +97,7 @@ export class ClaudeService {
       const anthropic = this.getAnthropic();
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20240620", // Using Claude 3.5 Sonnet - the most capable model
+        model: "claude-3-7-sonnet-20250219", // Using Claude 3.7 Sonnet with hybrid reasoning and thinking capabilities
         max_tokens: maxTokens,
         temperature: temperature,
         system: systemPrompt,
