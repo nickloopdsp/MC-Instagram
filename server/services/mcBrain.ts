@@ -5,8 +5,8 @@ import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysi
 import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
 import { ClaudeService, claudeService } from "./claude";
 
-// Using o4-mini-high for enhanced reasoning, web search and vision capabilities
-// Latest OpenAI model with improved performance and multimodal understanding
+// Using GPT-4o for proven vision, reasoning, and web search capabilities
+// Reliable OpenAI model with strong multimodal understanding and function calling
 let openai: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
@@ -500,26 +500,7 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
           }
         } catch (openaiError: any) {
           console.error("Error calling OpenAI API:", openaiError);
-          // If o4-mini-high is not supported, fall back to a working model
-          if (openaiError.error?.code === 'model_not_found' || openaiError.error?.message?.includes('model')) {
-            console.log("⚠️  o4-mini-high model not available, falling back to gpt-4o");
-            try {
-              const fallbackResponse = await getOpenAI().chat.completions.create({
-                model: 'gpt-4o',
-                messages,
-                tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-                tool_choice: "auto",
-                max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
-                temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
-              });
-              aiResponse = fallbackResponse.choices[0].message.content || "I'm MC, your music concierge! What can I help you with today?";
-            } catch (fallbackError) {
-              console.error("Fallback model also failed:", fallbackError);
-              aiResponse = "I'm MC, your music concierge! I'm having technical issues but I'm here to help with your music career. What can I assist you with?";
-            }
-          } else {
-            aiResponse = "I'm MC, your music concierge! I'm having technical issues but I'm here to help with your music career. What can I assist you with?";
-          }
+          aiResponse = "I'm MC, your music concierge! I'm having technical issues but I'm here to help with your music career. What can I assist you with?";
         }
       } // End of else block for OpenAI provider
       
