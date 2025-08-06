@@ -108,54 +108,40 @@ export class VisionAnalysisService {
     const openai = getOpenAI();
 
     try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o", // GPT-4o has vision capabilities
+      const res = await openai.chat.completions.create({
+        model: "gpt-4o",
         messages: [
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: prompt
-              },
+            content: prompt,
+            // ← Pass the image here, not inside `content`
+            attachments: [
               {
                 type: "image_url",
-                image_url: { 
-                  url: imageUrl, 
-                  detail: "high" 
-                }
+                image_url: { url: imageUrl, detail: "high" }
               }
             ]
           }
         ],
-        // Fix: Use function calling for structured output (tools format)
-        tools: [{ type: "function", function: processImageAnalysisSpec }],
-        tool_choice: { type: "function", function: { name: "process_image_analysis" } },
+        // ← Use the standard function‐calling fields
+        functions: [processImageAnalysisSpec],
+        function_call: { name: "process_image_analysis" },
         max_tokens: 500,
         temperature: 0.7
       });
 
-      // Fix: Extract from tool_calls instead of function_call (new format)
-      const toolCalls = response.choices[0].message.tool_calls;
-      if (!toolCalls || toolCalls.length === 0) {
-        throw new Error("No tool_calls in response");
+      const call = res.choices[0].message.function_call;
+      if (!call?.arguments) {
+        throw new Error("No function_call.arguments in response");
       }
 
-      const functionCall = toolCalls[0];
-      if (functionCall.type !== "function" || !functionCall.function.arguments) {
-        throw new Error("Invalid tool call response format");
-      }
-
-      // Parse the structured JSON response
-      const analysisData = JSON.parse(functionCall.function.arguments) as ImageAnalysisResult;
-      return analysisData;
-      
-    } catch (error) {
-      console.error("Error analyzing image:", error);
+      return JSON.parse(call.arguments) as ImageAnalysisResult;
+    } catch (err: any) {
+      console.error("Error analyzing image:", err);
       return {
         description: "Unable to analyze image at this time",
         actionableAdvice: [],
-        error: `Analysis failed: ${error instanceof Error ? error.message : String(error)}`
+        error: err.message || String(err)
       };
     }
   }
