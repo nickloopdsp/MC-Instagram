@@ -371,19 +371,32 @@ You: [Uses search_web function for current info]
         
       } else {
         // Use OpenAI with function calling - use messages as-is
-        const response = await getOpenAI().chat.completions.create({
-          model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
-          messages,
-          tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-          tool_choice: "auto", // Let the model decide when to use functions
-          max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
-          temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
-        });
-
-        aiResponse = response.choices[0].message.content || `Thanks for your message: "${userText}". I'm here to help!`;
+        console.log(`Using OpenAI model: ${MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model}`);
+        console.log(`Message count: ${messages.length}`);
+        console.log(`User message length: ${userMessage.length} chars`);
         
-        // Handle tool calls if any (only for OpenAI)
-        if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
+        try {
+          const response = await getOpenAI().chat.completions.create({
+            model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
+            messages,
+            tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
+            tool_choice: "auto", // Let the model decide when to use functions
+            max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
+            temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
+          });
+          
+          console.log(`OpenAI Response status: ${response.choices?.[0]?.finish_reason}`);
+          console.log(`Response content length: ${response.choices?.[0]?.message?.content?.length || 0} chars`);
+          
+          if (!response.choices?.[0]?.message?.content) {
+            console.log("⚠️  OpenAI returned no content, using fallback");
+            aiResponse = "I'm MC, your music concierge! What can I help you with today?";
+          } else {
+            aiResponse = response.choices[0].message.content;
+          }
+        
+          // Handle tool calls if any (only for OpenAI)
+          if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
         const toolCall = response.choices[0].message.tool_calls[0];
         console.log("Tool call requested:", toolCall.function.name, toolCall.function.arguments);
         
@@ -453,7 +466,30 @@ You: [Uses search_web function for current info]
         } catch (error) {
           console.error("Error handling function call:", error);
         }
-      }
+          }
+        } catch (openaiError: any) {
+          console.error("Error calling OpenAI API:", openaiError);
+          // If o4-mini-high is not supported, fall back to a working model
+          if (openaiError.error?.code === 'model_not_found' || openaiError.error?.message?.includes('model')) {
+            console.log("⚠️  o4-mini-high model not available, falling back to gpt-4o");
+            try {
+              const fallbackResponse = await getOpenAI().chat.completions.create({
+                model: 'gpt-4o',
+                messages,
+                tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
+                tool_choice: "auto",
+                max_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens,
+                temperature: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
+              });
+              aiResponse = fallbackResponse.choices[0].message.content || "I'm MC, your music concierge! What can I help you with today?";
+            } catch (fallbackError) {
+              console.error("Fallback model also failed:", fallbackError);
+              aiResponse = "I'm MC, your music concierge! I'm having technical issues but I'm here to help with your music career. What can I assist you with?";
+            }
+          } else {
+            aiResponse = "I'm MC, your music concierge! I'm having technical issues but I'm here to help with your music career. What can I assist you with?";
+          }
+        }
       } // End of else block for OpenAI provider
       
       // Remove the automatic dashboard prompting after 3 messages
@@ -490,18 +526,17 @@ You: [Uses search_web function for current info]
         }
       } else {
         // General conversational fallback
-        response = `Thanks for your message: "${userText}". `;
+        response = "Hey! I'm MC, your music concierge. ";
         
         if (mediaAttachments.length > 0) {
-          const mediaTypes = mediaAttachments.map(m => m.type).join(', ');
-          response += `I can see you've shared ${mediaAttachments.length} ${mediaTypes} file(s). `;
+          response += "I see you've shared some content - ";
         }
 
         if (extractedContent.length > 0) {
-          response += `I also noticed you shared ${extractedContent.length} link(s). `;
+          response += "I noticed you shared some links - ";
         }
 
-        response += "What would you like to discuss about your music or career?";
+        response += "What music questions can I help you with today?";
       }
       
       return response;
@@ -509,6 +544,6 @@ You: [Uses search_web function for current info]
   } catch (error) {
     console.error("Error in mcBrain:", error);
     // Fallback response
-    return `Thanks for your message: "${userText}". I received your message and I'm here to help!`;
+    return "Hey! I'm MC, Loop's music concierge. Something went wrong but I'm here to help with your music career. What can I assist you with?";
   }
 }
