@@ -153,7 +153,7 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
       console.log(`📎 Resolved Instagram content:`, {
         hasCaption: !!igMeta?.caption,
         captionLength: igMeta?.caption?.length || 0,
-        mediaUrls: syntheticContent.mediaUrls.length,
+        mediaUrls: syntheticContent.mediaUrls?.length || 0,
         isVideo: syntheticContent.isVideo,
         source: igMeta?.source || 'attachment'
       });
