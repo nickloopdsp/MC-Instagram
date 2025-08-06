@@ -132,10 +132,45 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   }
 
   // Analyze images if any are provided (including from Instagram posts)
+  // Only analyze images if they are new (not already in conversation context)
   let imageAnalysis: ImageAnalysisResult[] = [];
   const imageAttachments = mediaAttachments.filter(attachment => 
     attachment.type === 'image' && attachment.url
   );
+  
+  // Check if images have already been analyzed in this conversation
+  // Look for image analysis indicators in previous bot responses
+  const hasImageAnalysisInConversation = conversationContext.some(ctx => 
+    ctx.responseText && (
+      ctx.responseText.includes('ornate') ||
+      ctx.responseText.includes('architecture') ||
+      ctx.responseText.includes('facade') ||
+      ctx.responseText.includes('historic') ||
+      ctx.responseText.includes('building') ||
+      ctx.responseText.includes('golden hour') ||
+      ctx.responseText.includes('balcony') ||
+      ctx.responseText.includes('cozy') ||
+      ctx.responseText.includes('intimate') ||
+      ctx.responseText.includes('studio') ||
+      ctx.responseText.includes('warm') ||
+      (ctx.responseText.includes('love') && ctx.responseText.includes('setting')) ||
+      (ctx.responseText.includes('perfect') && ctx.responseText.includes('for'))
+    )
+  );
+  
+  // Only analyze images if there are image attachments AND this appears to be a new image request
+  // (user mentions new image, different context, or no previous analysis)
+  const appearsToBeNewImageRequest = userText.toLowerCase().includes('check') || 
+                                   userText.toLowerCase().includes('look') ||
+                                   userText.toLowerCase().includes('see') ||
+                                   userText.toLowerCase().includes('photo') ||
+                                   userText.toLowerCase().includes('image') ||
+                                   userText.toLowerCase().includes('picture');
+  
+  const shouldAnalyzeImages = imageAttachments.length > 0 && 
+    (!hasImageAnalysisInConversation || appearsToBeNewImageRequest);
+  
+  console.log(`📷 Image analysis decision: ${imageAttachments.length} attachments, hasAnalysis=${hasImageAnalysisInConversation}, newRequest=${appearsToBeNewImageRequest}, shouldAnalyze=${shouldAnalyzeImages}`);
   
   // Also collect images from Instagram posts
   const instagramImages: Array<{url: string, context?: string}> = [];
@@ -156,7 +191,7 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
     ...instagramImages
   ];
   
-  if (allImages.length > 0) {
+  if (allImages.length > 0 && shouldAnalyzeImages) {
     console.log(`Analyzing ${allImages.length} image(s) (${imageAttachments.length} attachments, ${instagramImages.length} from Instagram)...`);
     try {
       // Import MediaProxyService for making images publicly accessible
@@ -194,6 +229,8 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
     } catch (error) {
       console.error("Error analyzing images:", error);
     }
+  } else if (allImages.length > 0) {
+    console.log(`📷 Skipping image analysis - ${allImages.length} image(s) already analyzed in this conversation`);
   }
   
   // Analyze conversation history to check for repeated topics
@@ -326,8 +363,8 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
       // Prepare user message with media context and URL information
       let userMessage = userText;
       
-      // Add media attachment context
-      if (mediaAttachments.length > 0) {
+      // Add media attachment context only if we're analyzing new images
+      if (mediaAttachments.length > 0 && shouldAnalyzeImages) {
         const mediaContext = `\n\n[User has shared ${mediaAttachments.length} media attachment(s): ${
           mediaAttachments.map(m => {
             if (m.type === 'ig_reel' || (m.title && m.title.includes('@'))) {
@@ -364,8 +401,8 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         userMessage += urlContext;
       }
 
-      // Add image analysis results if available
-      if (imageAnalysis.length > 0) {
+      // Add image analysis results if available and new
+      if (imageAnalysis.length > 0 && shouldAnalyzeImages) {
         let imageContext = '\n\n[Image Analysis Results:';
         for (const analysis of imageAnalysis) {
           imageContext += `\n- ${analysis.description}`;
