@@ -345,7 +345,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       aiModels: {
         openai: {
           configured: !!process.env.OPENAI_API_KEY,
-          model: "o3",
+          reasoningModel: "o3",
+          visionModel: "gpt-4o", 
+          hybridApproach: "GPT o3 for reasoning, GPT-4o for vision analysis",
           keyPreview: process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.substring(0, 8)}...` : "NOT SET"
         },
         claude: {

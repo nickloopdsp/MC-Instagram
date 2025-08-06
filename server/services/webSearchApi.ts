@@ -122,18 +122,20 @@ export class WebSearchAPI {
     try {
       console.log(`Web search: "${query}" (context: ${context})`);
       
-      const results = await this.performSearch(query, context);
+      // Use GPT o3 to provide intelligent responses about current trends and information
+      const intelligentResponse = await this.getIntelligentResponse(query, context);
       
-      if (results.length === 0) {
+      if (intelligentResponse) {
         return {
           success: true,
           query,
           results: [],
-          summary: `I searched for "${query}" but didn't find specific current results. Let me help you with music industry insights or direct you to relevant tools in your Loop dashboard.`
+          summary: intelligentResponse
         };
       }
 
-      // Create a concise summary for DM
+      // Fallback to mock results if GPT response fails
+      const results = await this.performSearch(query, context);
       const summary = this.createSummary(query, results);
       
       return {
@@ -151,6 +153,40 @@ export class WebSearchAPI {
         summary: `I couldn't search for that information right now. Try asking about specific music industry topics, or I can guide you to your Loop dashboard for insights.`,
         error: error instanceof Error ? error.message : "Unknown error"
       };
+    }
+  }
+
+  private static async getIntelligentResponse(query: string, context: string): Promise<string | null> {
+    try {
+      // Import OpenAI here to avoid circular dependencies
+      const { default: OpenAI } = await import('openai');
+      
+      const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+      if (!apiKey) {
+        return null;
+      }
+
+      const openai = new OpenAI({ apiKey });
+
+      const response = await openai.chat.completions.create({
+        model: "o3",
+        messages: [
+          {
+            role: "system",
+            content: "You are MC, a music industry expert providing current insights and trends. Provide helpful, actionable information about music industry topics. Keep responses concise but informative, suitable for Instagram DM conversations."
+          },
+          {
+            role: "user", 
+            content: `Based on your knowledge of current music industry trends and practices, please provide insights about: ${query}. Context: ${context}`
+          }
+        ],
+        max_completion_tokens: 300
+      });
+
+      return response.choices[0].message.content || null;
+    } catch (error) {
+      console.error("Error getting intelligent response:", error);
+      return null;
     }
   }
 
