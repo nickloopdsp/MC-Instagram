@@ -65,8 +65,22 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   console.log("\n=== MC Brain Called ===");
   console.log("User Text:", userText);
   console.log("Conversation Context Length:", conversationContext.length);
-  console.log("Conversation Context:", JSON.stringify(conversationContext, null, 2));
-  console.log("Media Attachments:", JSON.stringify(mediaAttachments, null, 2));
+  
+  if (conversationContext.length > 0) {
+    console.log("Conversation Context (recent messages):");
+    conversationContext.forEach((ctx, index) => {
+      if (ctx.messageText) {
+        console.log(`  ${index}: USER: "${ctx.messageText}"`);
+      }
+      if (ctx.responseText) {
+        console.log(`  ${index}: MC: "${ctx.responseText.split('[ACTION]')[0].trim()}"`);
+      }
+    });
+  } else {
+    console.log("No conversation history found - this is a fresh conversation");
+  }
+  
+  console.log("Media Attachments:", mediaAttachments.length);
   console.log("====================\n");
   
   // Process URLs in the message
@@ -164,18 +178,30 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   const { sameTopicCount, currentTopic } = analyzeConversationTopic(conversationContext);
   
   // Build conversation history for the AI
-  const conversationHistory = conversationContext.map(ctx => {
-    const messages = [];
+  // Group messages into proper user-assistant pairs
+  const conversationHistory = [];
+  
+  for (const ctx of conversationContext) {
     if (ctx.messageText) {
-      messages.push({ role: "user" as const, content: ctx.messageText });
+      // User message
+      conversationHistory.push({ 
+        role: "user" as const, 
+        content: ctx.messageText 
+      });
     }
     if (ctx.responseText) {
-      // Extract just the human-readable part (before ACTION block)
+      // Bot response - extract just the human-readable part (before ACTION block)
       const cleanResponse = ctx.responseText.split('[ACTION]')[0].trim();
-      messages.push({ role: "assistant" as const, content: cleanResponse });
+      if (cleanResponse) {
+        conversationHistory.push({ 
+          role: "assistant" as const, 
+          content: cleanResponse 
+        });
+      }
     }
-    return messages;
-  }).flat();
+  }
+  
+  console.log(`Built conversation history with ${conversationHistory.length} messages for AI context`);
 
   try {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;

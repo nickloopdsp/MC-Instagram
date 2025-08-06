@@ -96,31 +96,45 @@ export class DatabaseStorage implements IStorage {
         eq(webhookEvents.recipientId, senderId)
       ))
       .orderBy(desc(webhookEvents.createdAt))
-      .limit(limit * 2); // Get more messages since we're filtering
+      .limit(limit * 3); // Get more messages to ensure we have enough context
     
-    // Transform into conversation format
+    // Sort by createdAt ascending to process in chronological order
+    const sortedEvents = events.sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    
+    // Build conversation pairs: user message + bot response
     const conversation: Array<{messageText: string | null, responseText: string | null, intent: string | null}> = [];
     
-    for (const event of events) {
+    for (let i = 0; i < sortedEvents.length; i++) {
+      const event = sortedEvents[i];
+      
       if (event.eventType === 'message_received' && event.senderId === senderId) {
-        // User message
+        // User message - look for corresponding bot response
+        const userMessage = event.messageText;
+        let botResponse = null;
+        let botIntent = null;
+        
+        // Find the next bot response to this user
+        for (let j = i + 1; j < sortedEvents.length; j++) {
+          const nextEvent = sortedEvents[j];
+          if (nextEvent.eventType === 'message_sent' && nextEvent.recipientId === senderId) {
+            botResponse = nextEvent.responseText || nextEvent.messageText;
+            botIntent = nextEvent.intent;
+            break;
+          }
+        }
+        
         conversation.push({
-          messageText: event.messageText,
-          responseText: null,
-          intent: null
-        });
-      } else if (event.eventType === 'message_sent' && event.recipientId === senderId) {
-        // Bot response
-        conversation.push({
-          messageText: null,
-          responseText: event.responseText || event.messageText,
-          intent: event.intent
+          messageText: userMessage,
+          responseText: botResponse,
+          intent: botIntent
         });
       }
     }
     
-    // Return in chronological order for context, limited to requested amount
-    return conversation.reverse().slice(-limit);
+    // Return the most recent conversation pairs, limited to requested amount
+    return conversation.slice(-limit);
   }
 }
 
