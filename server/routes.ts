@@ -330,9 +330,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         IG_VERIFY_TOKEN: !!process.env.IG_VERIFY_TOKEN,
         IG_PAGE_TOKEN: !!process.env.IG_PAGE_TOKEN,
         OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+        CLAUDE_API_KEY: !!(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY),
       }
     };
     res.json(health);
+  });
+
+  // Enhanced diagnostics endpoint for debugging AI model issues
+  app.get("/api/diagnostics", (req: Request, res: Response) => {
+    const diagnostics = {
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      railway: !!process.env.RAILWAY_ENVIRONMENT_NAME,
+      aiModels: {
+        openai: {
+          configured: !!process.env.OPENAI_API_KEY,
+          model: "o3",
+          keyPreview: process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.substring(0, 8)}...` : "NOT SET"
+        },
+        claude: {
+          configured: !!(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY),
+          model: "claude-3-7-sonnet-20250219",
+          keyPreview: (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY) ? 
+            `${(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY)!.substring(0, 8)}...` : "NOT SET"
+        }
+      },
+      instagram: {
+        pageToken: !!process.env.IG_PAGE_TOKEN,
+        verifyToken: !!process.env.IG_VERIFY_TOKEN,
+        appSecret: !!process.env.IG_APP_SECRET
+      },
+      serverHealth: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        platform: process.platform,
+        nodeVersion: process.version
+      }
+    };
+    res.json(diagnostics);
   });
 
   // API endpoint to get webhook events for dashboard

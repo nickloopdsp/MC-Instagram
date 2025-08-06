@@ -562,7 +562,29 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
     }
   } catch (error) {
     console.error("Error in mcBrain:", error);
-    // Fallback response
+    console.error("Error details:", {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
+
+    // Provide more specific error information based on the error type
+    if (error instanceof Error) {
+      if (error.message.includes('OPENAI_API_KEY')) {
+        console.error("🔑 OpenAI API Key Issue - Check Railway environment variables");
+        return "Hey! I'm MC, your music concierge. I'm having API key issues but I'm here to help with your music career. What can I assist you with?";
+      }
+      if (error.message.includes('CLAUDE_API_KEY')) {
+        console.error("🔑 Claude API Key Issue - Check Railway environment variables");
+        return "Hey! I'm MC, your music concierge. I'm having API key issues but I'm here to help with your music career. What can I assist you with?";
+      }
+      if (error.message.includes('model') || error.message.includes('o3') || error.message.includes('claude')) {
+        console.error("🤖 AI Model Issue - Check model compatibility");
+        return "Hey! I'm MC, your music concierge. I'm having model compatibility issues but I'm here to help with your music career. What can I assist you with?";
+      }
+    }
+    
+    // Generic fallback
     return "Hey! I'm MC, Loop's music concierge. Something went wrong but I'm here to help with your music career. What can I assist you with?";
   }
 }
