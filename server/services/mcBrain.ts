@@ -131,48 +131,7 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
     }
   }
 
-  // Analyze images if any are provided (including from Instagram posts)
-  // Only analyze images if they are new (not already in conversation context)
-  let imageAnalysis: ImageAnalysisResult[] = [];
-  const imageAttachments = mediaAttachments.filter(attachment => 
-    attachment.type === 'image' && attachment.url
-  );
-  
-  // Check if images have already been analyzed in this conversation
-  // Look for image analysis indicators in previous bot responses
-  const hasImageAnalysisInConversation = conversationContext.some(ctx => 
-    ctx.responseText && (
-      ctx.responseText.includes('ornate') ||
-      ctx.responseText.includes('architecture') ||
-      ctx.responseText.includes('facade') ||
-      ctx.responseText.includes('historic') ||
-      ctx.responseText.includes('building') ||
-      ctx.responseText.includes('golden hour') ||
-      ctx.responseText.includes('balcony') ||
-      ctx.responseText.includes('cozy') ||
-      ctx.responseText.includes('intimate') ||
-      ctx.responseText.includes('studio') ||
-      ctx.responseText.includes('warm') ||
-      (ctx.responseText.includes('love') && ctx.responseText.includes('setting')) ||
-      (ctx.responseText.includes('perfect') && ctx.responseText.includes('for'))
-    )
-  );
-  
-  // Only analyze images if there are image attachments AND this appears to be a new image request
-  // (user mentions new image, different context, or no previous analysis)
-  const appearsToBeNewImageRequest = userText.toLowerCase().includes('check') || 
-                                   userText.toLowerCase().includes('look') ||
-                                   userText.toLowerCase().includes('see') ||
-                                   userText.toLowerCase().includes('photo') ||
-                                   userText.toLowerCase().includes('image') ||
-                                   userText.toLowerCase().includes('picture');
-  
-  const shouldAnalyzeImages = imageAttachments.length > 0 && 
-    (!hasImageAnalysisInConversation || appearsToBeNewImageRequest);
-  
-  console.log(`📷 Image analysis decision: ${imageAttachments.length} attachments, hasAnalysis=${hasImageAnalysisInConversation}, newRequest=${appearsToBeNewImageRequest}, shouldAnalyze=${shouldAnalyzeImages}`);
-  
-  // Also collect images from Instagram posts
+  // Collect images from Instagram posts first
   const instagramImages: Array<{url: string, context?: string}> = [];
   for (const content of extractedContent) {
     if (content.type.startsWith('instagram_') && content.mediaUrls && !content.isVideo) {
@@ -184,6 +143,44 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
       });
     }
   }
+
+  // Analyze images if any are provided (including from Instagram posts)
+  let imageAnalysis: ImageAnalysisResult[] = [];
+  const imageAttachments = mediaAttachments.filter(attachment => 
+    attachment.type === 'image' && attachment.url
+  );
+  
+  // URL dedupe logic: only analyze images we haven't seen before
+  const seenUrls = new Set<string>();
+  const allImageUrls = [
+    ...imageAttachments.map(a => a.url!).filter(Boolean),
+    ...instagramImages.map(i => i.url)
+  ].filter(Boolean);
+
+  // De-dupe URLs - only keep URLs we haven't processed
+  const uniqueImageUrls = allImageUrls.filter(url => {
+    if (seenUrls.has(url)) {
+      return false;
+    }
+    seenUrls.add(url);
+    return true;
+  });
+
+  // Check if any of these URLs were analyzed in previous conversation turns
+  // Look for image analysis evidence in previous responses (more reliable than URL matching)
+  const hasImageAnalysisHistory = conversationContext.some(ctx => 
+    ctx.responseText && (
+      ctx.responseText.includes('Image Analysis:') ||
+      ctx.responseText.includes('music') && ctx.responseText.includes('instruments') ||
+      ctx.responseText.includes('venue') && ctx.responseText.includes('vibe') ||
+      ctx.responseText.includes('studio') && ctx.responseText.includes('setup')
+    )
+  );
+
+  // Only analyze if we have images AND haven't done image analysis in this conversation
+  const shouldAnalyzeImages = uniqueImageUrls.length > 0 && !hasImageAnalysisHistory;
+  
+  console.log(`📷 Image analysis decision: ${allImageUrls.length} total URLs, ${uniqueImageUrls.length} unique, hasHistory=${hasImageAnalysisHistory}, shouldAnalyze=${shouldAnalyzeImages}`);
   
   // Combine all images for analysis
   const allImages = [
@@ -401,19 +398,17 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         userMessage += urlContext;
       }
 
-      // Add image analysis results if available and new
+      // Add image analysis results if available and new (keep tight for token efficiency)
       if (imageAnalysis.length > 0 && shouldAnalyzeImages) {
-        let imageContext = '\n\n[Image Analysis Results:';
+        let imageContext = '\n\n[Image Analysis:';
         for (const analysis of imageAnalysis) {
-          imageContext += `\n- ${analysis.description}`;
+          imageContext += `\n- ${analysis.description.substring(0, 150)}`;
           if (analysis.musicContext) {
-            imageContext += `\n  Music Context: ${JSON.stringify(analysis.musicContext)}`;
-          }
-          if (analysis.marketingInsights) {
-            imageContext += `\n  Marketing Insights: ${JSON.stringify(analysis.marketingInsights)}`;
+            const { genre, mood, setting } = analysis.musicContext;
+            imageContext += `\n  Genre: ${genre || 'N/A'}, Mood: ${mood || 'N/A'}, Setting: ${setting || 'N/A'}`;
           }
           if (analysis.actionableAdvice && analysis.actionableAdvice.length > 0) {
-            imageContext += `\n  Actionable Advice: ${analysis.actionableAdvice.join('; ')}`;
+            imageContext += `\n  Top Tip: ${analysis.actionableAdvice[0]}`;
           }
         }
         imageContext += ']';
@@ -456,8 +451,7 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
           MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
         );
         
-        // Add provider info to response for transparency
-        aiResponse = `${aiResponse}\n\n[Powered by Claude]`;
+        // Removed Claude branding to maintain consistent MC brand voice
         
       } else {
         // Use OpenAI with function calling - use messages as-is

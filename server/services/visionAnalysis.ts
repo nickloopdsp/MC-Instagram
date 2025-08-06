@@ -150,12 +150,13 @@ export class VisionAnalysisService {
         return JSON.parse(msg.function_call.arguments) as ImageAnalysisResult;
       }
       
-      // Fallback to content or a minimal object
+      // Fallback to content when function calling fails
       const text = msg?.content ?? "No analysis returned";
-      console.log("⚠️ Model didn't call function, using fallback:", text);
+      console.log("⚠️ Model didn't call function, using content fallback:", text.substring(0, 100));
       return { 
         description: text, 
-        actionableAdvice: [] // Always return array so callers can safely .map()
+        actionableAdvice: [], // Always return array so callers can safely .map()
+        error: "Function calling not used - fallback to text response"
       };
     } catch (err: any) {
       console.error("Error analyzing image:", err);

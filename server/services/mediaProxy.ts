@@ -17,6 +17,45 @@ export class MediaProxyService {
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
   /**
+   * Resolve Instagram attachment ID to actual media URL using Graph API
+   */
+  static async resolveMediaUrlFromGraph(
+    attachmentId: string, 
+    accessToken: string
+  ): Promise<string | null> {
+    try {
+      console.log(`📎 Resolving Instagram attachment ID: ${attachmentId}`);
+      
+      const response = await axios.get(
+        `https://graph.facebook.com/v21.0/${attachmentId}`,
+        { 
+          params: { 
+            fields: "file_url,image_url,media_url,thumbnail_url", 
+            access_token: accessToken 
+          },
+          timeout: 5000
+        }
+      );
+
+      const data = response.data;
+      const resolvedUrl = data.file_url || data.image_url || data.media_url || data.thumbnail_url;
+      
+      if (resolvedUrl) {
+        console.log(`📎 Resolved attachment ${attachmentId} to: ${resolvedUrl.substring(0, 100)}...`);
+        return resolvedUrl;
+      } else {
+        console.warn(`⚠️ No media URL found for attachment ${attachmentId}`);
+        console.log(`📋 Available fields:`, Object.keys(data));
+        return null;
+      }
+
+    } catch (error) {
+      console.error(`❌ Error resolving attachment ${attachmentId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Convert Instagram DM media URL to a publicly accessible format
    * This fetches the media from Instagram Graph API and converts to data URL
    */
@@ -41,8 +80,20 @@ export class MediaProxyService {
 
       console.log("📎 Converting Instagram media to data URL...");
 
+      // Check if this looks like an attachment ID rather than a direct URL
+      let actualMediaUrl = mediaUrl;
+      if (pageAccessToken && !mediaUrl.startsWith('http') && mediaUrl.match(/^\d+$/)) {
+        // Looks like an attachment ID, try to resolve it
+        const resolvedUrl = await this.resolveMediaUrlFromGraph(mediaUrl, pageAccessToken);
+        if (resolvedUrl) {
+          actualMediaUrl = resolvedUrl;
+        } else {
+          console.log("📎 Could not resolve attachment ID, trying original URL");
+        }
+      }
+
       // Fetch the image bytes
-      const imageBytes = await this.fetchImageBytes(mediaUrl, pageAccessToken);
+      const imageBytes = await this.fetchImageBytes(actualMediaUrl, pageAccessToken);
       if (!imageBytes) {
         return null;
       }
@@ -52,6 +103,15 @@ export class MediaProxyService {
       const base64Data = imageBytes.toString('base64');
       const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
+      // Cap data URL size to prevent token overflow
+      const MAX_DATA_URL_KB = 6000; // ~6MB string budget for vision models
+      const dataUrlSizeKB = dataUrl.length / 1024;
+      
+      if (dataUrlSizeKB > MAX_DATA_URL_KB) {
+        console.warn(`⚠️ Data URL too large for vision prompt: ${Math.round(dataUrlSizeKB)}KB > ${MAX_DATA_URL_KB}KB`);
+        return null; // Could implement image downscaling in the future
+      }
+
       // Cache the result
       this.cache[cacheKey] = {
         dataUrl,
@@ -59,7 +119,7 @@ export class MediaProxyService {
         expiresAt: Date.now() + this.CACHE_TTL
       };
 
-      console.log(`📎 Successfully converted image to data URL (${Math.round(base64Data.length / 1024)}KB)`);
+      console.log(`📎 Successfully converted image to data URL (${Math.round(dataUrlSizeKB)}KB)`);
       return dataUrl;
 
     } catch (error) {
@@ -113,9 +173,20 @@ export class MediaProxyService {
         responseType: 'arraybuffer',
         timeout: 10000, // 10 second timeout
         maxContentLength: 10 * 1024 * 1024, // 10MB max
+        validateStatus: (status) => status >= 200 && status < 400
       });
 
-      return Buffer.from(response.data);
+      // Validate content type before processing
+      const contentType = response.headers['content-type'] || '';
+      if (!contentType.startsWith('image/')) {
+        console.error(`❌ Not an image content-type: ${contentType} for URL: ${url}`);
+        return null;
+      }
+
+      const imageBuffer = Buffer.from(response.data);
+      console.log(`📎 Fetched image: ${contentType}, ${Math.round(imageBuffer.length / 1024)}KB`);
+      
+      return imageBuffer;
 
     } catch (error) {
       console.error("❌ Error fetching image bytes:", error);
