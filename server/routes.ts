@@ -54,8 +54,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (body.object === "instagram" || body.object === "page") {
       // Loop through each entry
       for (const entry of body.entry || []) {
-        // Loop through messaging events
-        for (const messagingEvent of entry.messaging || []) {
+        // Collect messaging events from both Messenger-style and Instagram-changes payloads
+        const collectedEvents: any[] = [];
+        if (Array.isArray(entry.messaging)) {
+          collectedEvents.push(...entry.messaging);
+        }
+        if (Array.isArray(entry.changes)) {
+          for (const change of entry.changes) {
+            if (change?.field === 'messages' && Array.isArray(change?.value?.messaging)) {
+              collectedEvents.push(...change.value.messaging);
+            }
+          }
+        }
+
+        // Loop through messaging events (from either path)
+        for (const messagingEvent of collectedEvents) {
           const senderId = messagingEvent.sender?.id;
           const recipientId = messagingEvent.recipient?.id;
           const messageText = messagingEvent.message?.text;
@@ -212,10 +225,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Get conversation context for this user (now includes the message we just stored)
               const conversationContext = await storage.getConversationContext(senderId);
 
-              // 1. FIRST: Mark the incoming message as "seen" immediately 
+              // 1. FIRST: Mark the incoming message as "seen" immediately (already attempted above)
               if (process.env.IG_PAGE_TOKEN) {
-                const { markMessageAsSeen } = await import("./services/instagram");
-                await markMessageAsSeen(senderId, process.env.IG_PAGE_TOKEN);
+                try {
+                  const { markMessageAsSeen } = await import("./services/instagram");
+                  await markMessageAsSeen(senderId, process.env.IG_PAGE_TOKEN);
+                } catch (err) {
+                  console.warn("markMessageAsSeen failed (non-blocking):", err instanceof Error ? err.message : err);
+                }
               }
 
               // 2. THEN: Send typing indicator to show bot is processing
