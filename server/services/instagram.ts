@@ -164,6 +164,7 @@ export async function sendInstagramMessage(
   });
   
   const payload = {
+    messaging_product: 'instagram',
     message: messageObj,
     recipient: { id: recipientIdStr }
   };
@@ -261,6 +262,7 @@ export async function sendTypingIndicator(
   });
   
   const payload = {
+    messaging_product: 'instagram',
     recipient: { id: recipientIdStr },
     sender_action: action
   };
@@ -321,6 +323,7 @@ export async function markMessageAsSeen(
   }
 
   const payload = {
+    messaging_product: 'instagram',
     recipient: { id: recipientId },
     sender_action: "mark_seen"
   };
