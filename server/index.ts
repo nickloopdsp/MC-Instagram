@@ -4,7 +4,18 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
+// Capture raw body for webhook signature verification while still parsing JSON
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      try {
+        (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+      } catch {
+        // no-op
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
@@ -45,7 +56,8 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // Do not rethrow; avoid crashing the process in production
+    log(`Unhandled app error: ${message}`, 'error');
   });
 
   // importantly only setup vite in development and after

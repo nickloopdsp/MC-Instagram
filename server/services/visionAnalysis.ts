@@ -114,20 +114,19 @@ export class VisionAnalysisService {
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: prompt
-              },
-              {
-                type: "image_url",
-                image_url: { url: imageUrl, detail: "high" }
-              }
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } }
             ]
           }
         ],
-        // ← Use the standard function‐calling fields
-        functions: [processImageAnalysisSpec],
-        function_call: { name: "process_image_analysis" },
+        // Use tools API in SDK v5
+        tools: [
+          {
+            type: "function",
+            function: processImageAnalysisSpec as any
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "process_image_analysis" } } as any,
         max_tokens: 500,
         temperature: 0.7
       });
@@ -144,14 +143,15 @@ export class VisionAnalysisService {
         }
       }, null, 2));
 
-      // Add graceful fallback when function isn't called
-      const msg = res.choices[0]?.message;
-      if (msg?.function_call?.arguments) {
-        return JSON.parse(msg.function_call.arguments) as ImageAnalysisResult;
+      // Add graceful fallback when tool isn't called
+      const msg = res.choices[0]?.message as any;
+      const toolCall = msg?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        return JSON.parse(toolCall.function.arguments) as ImageAnalysisResult;
       }
       
-      // Fallback to content when function calling fails
-      const text = msg?.content ?? "No analysis returned";
+      // Fallback to content when tool calling fails
+      const text = (msg?.content as string) ?? "No analysis returned";
       console.log("⚠️ Model didn't call function, using content fallback:", text.substring(0, 100));
       return { 
         description: text, 

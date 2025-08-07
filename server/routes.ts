@@ -38,18 +38,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("=== WEBHOOK RECEIVED ===");
     console.log("Environment:", process.env.NODE_ENV || 'development');
     console.log("Railway Deployment:", !!process.env.RAILWAY_ENVIRONMENT_NAME);
-    console.log("Headers:", JSON.stringify(req.headers, null, 2));
-    console.log("Body:", JSON.stringify(body, null, 2));
+    // Redact sensitive headers and avoid logging full body in production
+    const safeHeaders = { ...req.headers } as Record<string, any>;
+    delete safeHeaders["authorization"]; delete safeHeaders["cookie"]; delete safeHeaders["x-hub-signature-256"]; 
+    console.log("Headers:", JSON.stringify(safeHeaders, null, 2));
+    console.log("Body keys:", Object.keys(body || {}));
     console.log("OpenAI Key Available:", !!process.env.OPENAI_API_KEY);
     console.log("Instagram Token Available:", !!process.env.IG_PAGE_TOKEN);
     console.log("========================");
 
-    // Temporarily disable signature verification for debugging
-    const signature = req.get("X-Hub-Signature-256");
-    console.log("Signature received:", signature);
-    
-    // Process all messages for now to debug the real message issue
-    // TODO: Re-enable signature verification in production
+    // Verify webhook signature (Meta: X-Hub-Signature-256 over raw body with app secret)
+    try {
+      const signatureHeader = req.get("X-Hub-Signature-256");
+      const rawBody: string | undefined = (req as unknown as { rawBody?: string }).rawBody;
+      const appSecret = process.env.IG_APP_SECRET;
+      const isValid = rawBody ? verifyWebhookSignature(rawBody, signatureHeader, appSecret) : false;
+      if (!isValid) {
+        console.warn("Invalid webhook signature");
+        return res.sendStatus(403);
+      }
+    } catch (e) {
+      console.error("Signature verification error:", e);
+      return res.sendStatus(403);
+    }
 
     if (body.object === "instagram") {
       // Loop through each entry

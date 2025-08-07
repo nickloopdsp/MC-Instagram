@@ -59,11 +59,11 @@ export class URLProcessor {
                  'instagram_post';
     
     try {
-      // Use Instagram's oEmbed API to get post information
-      const oembedUrl = `https://graph.facebook.com/v12.0/instagram_oembed?url=${encodeURIComponent(url)}&access_token=${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+      // Use Instagram's oEmbed API to get post information (latest Graph version)
+      const oembedUrl = `https://graph.facebook.com/v21.0/instagram_oembed?url=${encodeURIComponent(url)}&access_token=${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
       
-      // If no Facebook app credentials, try public oEmbed endpoint
-      const publicOembedUrl = `https://graph.facebook.com/v12.0/instagram_oembed?url=${encodeURIComponent(url)}`;
+      // If no Facebook app credentials, try public oEmbed endpoint (may be limited)
+      const publicOembedUrl = `https://graph.facebook.com/v21.0/instagram_oembed?url=${encodeURIComponent(url)}`;
       
       try {
         const response = await axios.get(process.env.FACEBOOK_APP_ID ? oembedUrl : publicOembedUrl);

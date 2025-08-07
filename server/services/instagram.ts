@@ -1,7 +1,8 @@
 import axios from "axios";
 import crypto from "crypto";
 
-const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
+// Use Facebook Graph base for messaging endpoints (Messenger Platform)
+const FB_GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -59,17 +60,21 @@ function isValidInstagramUserId(userId: string): boolean {
 }
 
 // Verify webhook signature
-export function verifyWebhookSignature(payload: string, signature: string, appSecret: string): boolean {
-  const expectedSignature = crypto
-    .createHmac("sha256", appSecret)
-    .update(payload, "utf8")
-    .digest("hex");
-  
-  const signatureHash = signature.replace("sha256=", "");
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedSignature, "hex"),
-    Buffer.from(signatureHash, "hex")
-  );
+export function verifyWebhookSignature(payload: string, signature: string | undefined | null, appSecret: string | undefined | null): boolean {
+  try {
+    if (!signature || !appSecret) return false;
+    const expectedSignature = crypto
+      .createHmac("sha256", appSecret)
+      .update(payload, "utf8")
+      .digest("hex");
+    const signatureHash = signature.startsWith("sha256=") ? signature.slice(7) : signature;
+    const expectedBuf = Buffer.from(expectedSignature, "hex");
+    const receivedBuf = Buffer.from(signatureHash, "hex");
+    if (expectedBuf.length !== receivedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  } catch {
+    return false;
+  }
 }
 
 async function delay(ms: number): Promise<void> {
@@ -155,7 +160,7 @@ export async function sendInstagramMessage(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await axios.post(
-        `https://graph.instagram.com/v21.0/me/messages`,
+        `${FB_GRAPH_API_BASE}/me/messages`,
         payload,
         {
           headers: {
@@ -249,7 +254,7 @@ export async function sendTypingIndicator(
 
   try {
     const response = await axios.post(
-      `https://graph.instagram.com/v21.0/me/messages`,
+      `${FB_GRAPH_API_BASE}/me/messages`,
       payload,
       {
         headers: {
@@ -311,10 +316,9 @@ export async function markMessageAsSeen(
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      rateLimiter.recordRequest();
       
       const response = await axios.post(
-        `${INSTAGRAM_API_BASE}/me/messages`,
+        `${FB_GRAPH_API_BASE}/me/messages`,
         payload,
         {
           headers: {
@@ -326,6 +330,7 @@ export async function markMessageAsSeen(
       );
 
       console.log("✅ Message marked as seen successfully:", response.data);
+      rateLimiter.recordRequest();
       return;
     } catch (error) {
       lastError = error;
@@ -358,7 +363,7 @@ export async function validateInstagramConfig(pageAccessToken: string): Promise<
     
     // Test the page access token by making a simple API call
     const response = await axios.get(
-      `${INSTAGRAM_API_BASE}/me`,
+      `${FB_GRAPH_API_BASE}/me`,
       {
         headers: {
           "Authorization": `Bearer ${pageAccessToken}`,
