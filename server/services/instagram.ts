@@ -1,8 +1,17 @@
 import axios from "axios";
 import crypto from "crypto";
 
-// Use Facebook Graph base for messaging endpoints (Messenger Platform)
-const FB_GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
+// Determine correct Graph base host for Instagram Messaging
+// Defaults to facebook host; can be overridden via env IG_GRAPH_HOST=instagram
+function getGraphApiBase(pageAccessToken?: string | null): string {
+  const override = (process.env.IG_GRAPH_HOST || "").toLowerCase();
+  if (override === "instagram") return "https://graph.instagram.com/v21.0";
+  if (override === "facebook") return "https://graph.facebook.com/v21.0";
+  if (pageAccessToken && pageAccessToken.startsWith("IGQV")) {
+    return "https://graph.instagram.com/v21.0";
+  }
+  return "https://graph.facebook.com/v21.0";
+}
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -174,7 +183,7 @@ export async function sendInstagramMessage(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const response = await axios.post(
-        `${FB_GRAPH_API_BASE}/me/messages`,
+        `${getGraphApiBase(pageAccessToken)}/me/messages`,
         payload,
         {
           headers: {
@@ -269,7 +278,7 @@ export async function sendTypingIndicator(
 
   try {
     const response = await axios.post(
-      `${FB_GRAPH_API_BASE}/me/messages`,
+      `${getGraphApiBase(pageAccessToken)}/me/messages`,
       payload,
       {
         headers: {
@@ -334,7 +343,7 @@ export async function markMessageAsSeen(
     try {
       
       const response = await axios.post(
-        `${FB_GRAPH_API_BASE}/me/messages`,
+        `${getGraphApiBase(pageAccessToken)}/me/messages`,
         payload,
         {
           headers: {
@@ -378,20 +387,20 @@ export async function validateInstagramConfig(pageAccessToken: string): Promise<
     console.log("🔍 Validating Instagram configuration...");
     
     // Test the page access token by making a simple API call
+    const base = getGraphApiBase(pageAccessToken);
     const response = await axios.get(
-      `${FB_GRAPH_API_BASE}/me`,
+      `${base}/me`,
       {
-        headers: {
-          "Authorization": `Bearer ${pageAccessToken}`,
-        },
+        headers: { "Authorization": `Bearer ${pageAccessToken}` },
+        params: { fields: 'id,name,username,account_type' },
         timeout: 10000,
       }
     );
-    
     console.log("✅ Instagram API configuration valid:", {
-      pageId: response.data.id,
-      pageName: response.data.name,
-      pageCategory: response.data.category
+      host: base,
+      id: response.data.id,
+      name: response.data.name || response.data.username,
+      accountType: response.data.account_type || 'unknown'
     });
     
   } catch (error: any) {
