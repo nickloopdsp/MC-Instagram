@@ -51,7 +51,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // TODO: Re-enable signature verification in production
 
     // Instagram DM webhooks may arrive with object "page" (Messenger Platform) or "instagram" (IG Graph)
-    if (body.object === "instagram" || body.object === "page") {
+    if ((body.object === "instagram" || body.object === "page") && Array.isArray(body.entry)) {
       // Loop through each entry
       for (const entry of body.entry || []) {
         // Collect messaging events from both Messenger-style and Instagram-changes payloads
@@ -61,8 +61,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         if (Array.isArray(entry.changes)) {
           for (const change of entry.changes) {
-            if (change?.field === 'messages' && Array.isArray(change?.value?.messaging)) {
-              collectedEvents.push(...change.value.messaging);
+            if (change?.field === 'messages' && change?.value) {
+              const val = change.value;
+              // Normalize Instagram Messaging change format to our messagingEvent shape
+              if (val.messaging_product === 'instagram') {
+                const normalized: any = {
+                  sender: { id: val.from?.id || val.sender?.id },
+                  recipient: { id: val.recipient?.id || entry.id },
+                  timestamp: val.timestamp,
+                  message: {
+                    text: val.message?.text || val.text,
+                    mid: val.message?.mid || val.id,
+                    attachments: Array.isArray(val.message?.attachments)
+                      ? val.message.attachments.map((att: any) => ({
+                          type: att.type || (att.image_url ? 'image' : (att.video_url ? 'video' : att.mime_type || 'file')),
+                          payload: { url: att.payload?.url || att.image_url || att.video_url },
+                          title: att.title || att.name || undefined
+                        }))
+                      : []
+                  }
+                };
+                collectedEvents.push(normalized);
+              }
             }
           }
         }
