@@ -35,15 +35,9 @@ async function testConversationImageAnalysis() {
     // Create mock conversation context with the first exchange
     const conversationContext: ConversationContext[] = [
       {
-        id: 'msg1',
-        sender_id: 'user123',
-        recipient_id: 'bot',
-        message: 'Check out this venue',
         messageText: 'Check out this venue',
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-        webhook_event: 'messages',
         responseText: response1,
-        intent: null
+        intent: 'image_analysis'
       }
     ];
 
@@ -66,15 +60,9 @@ async function testConversationImageAnalysis() {
 
     // Add second exchange to context
     conversationContext.push({
-      id: 'msg2',
-      sender_id: 'user123', 
-      recipient_id: 'bot',
-      message: 'What do you think about recording here?',
       messageText: 'What do you think about recording here?',
-      timestamp: new Date(Date.now() - 30000).toISOString(),
-      webhook_event: 'messages',
       responseText: response2,
-      intent: null
+      intent: 'follow_up'
     });
 
     // Test 3: Another follow-up message

@@ -25,15 +25,9 @@ async function testProductionReadiness() {
     // Create conversation context
     const conversationContext: ConversationContext[] = [
       {
-        id: 'msg1',
-        sender_id: 'user123',
-        recipient_id: 'bot',
-        message: 'Check this venue',
         messageText: 'Check this venue',
-        timestamp: new Date().toISOString(),
-        webhook_event: 'messages',
         responseText: response1,
-        intent: null
+        intent: 'image_analysis'
       }
     ];
 

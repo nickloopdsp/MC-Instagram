@@ -39,20 +39,9 @@ async function testCompleteInstagramFlow() {
     console.log("\n\n💬 Test 3: Follow-up Conversation");
     const conversationContext: ConversationContext[] = [
       {
-        id: 'test-1',
-        sender_id: 'user123',
-        recipient_id: 'bot',
-        message: userMessage2,
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-        webhook_event: 'messages'
-      },
-      {
-        id: 'test-2', 
-        sender_id: 'bot',
-        recipient_id: 'user123',
-        message: response2,
-        timestamp: new Date(Date.now() - 30000).toISOString(),
-        webhook_event: 'messages'
+        messageText: userMessage2,
+        responseText: response2,
+        intent: 'image_analysis'
       }
     ];
 
