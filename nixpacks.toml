@@ -1,5 +1,9 @@
 [phases.build]
-cmds = ["npm ci", "npm run build"]
+cmds = [
+  "npm ci --production=false",
+  "npm run check",
+  "npm run build"
+]
 
 [phases.start]
 cmd = "npm start"
