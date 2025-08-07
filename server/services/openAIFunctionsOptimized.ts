@@ -1,6 +1,7 @@
 import { OpenAI } from "openai";
 import { soundchartsAPI, formatArtistAnalytics } from "./soundcharts";
 import { WebSearchAPI } from "./webSearchApi";
+import { findInstagramProfiles } from "../functions/find_instagram_profiles";
 
 // Optimized OpenAI Functions for Instagram DM Music Concierge
 // These functions are designed to support quick routing and basic actions, not detailed analytics
@@ -177,6 +178,26 @@ export const OPTIMIZED_OPENAI_FUNCTIONS: OpenAI.Chat.ChatCompletionCreateParams.
       required: ["query"],
       additionalProperties: false
     }
+  },
+  {
+    name: "find_instagram_profiles",
+    description: "Search for and discover Instagram profiles based on location, role, and criteria. Use when user asks for networking suggestions or wants to find specific types of people.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query for finding Instagram profiles (e.g., 'hip-hop producers NYC', 'venues Berlin')"
+        },
+        limit: {
+          type: "integer",
+          description: "Maximum number of profiles to return (default: 8)",
+          default: 8
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
   }
 ];
 
@@ -325,6 +346,41 @@ export class OptimizedFunctionHandlers {
             error: "Failed to perform web search",
             message: "I couldn't search for that information right now. Try asking about specific music industry topics, or I can guide you to your Loop dashboard for insights.",
             deep_link: "https://app.loop.com/open?utm=ig_dm"
+          };
+        }
+        
+      case "find_instagram_profiles":
+        // Discover Instagram profiles using the new service
+        try {
+          const result = await findInstagramProfiles({
+            query: args.query,
+            limit: args.limit || 8
+          });
+          
+          if (result.profiles.length === 0) {
+            return {
+              success: false,
+              action: "no_profiles_found",
+              message: `I couldn't find any Instagram profiles matching "${args.query}". Try being more specific or try a different search term.`,
+              query: args.query
+            };
+          }
+          
+          return {
+            success: true,
+            action: "profiles_found",
+            message: `Found ${result.profiles.length} Instagram profiles for "${args.query}":`,
+            profiles: result.profiles,
+            query: args.query,
+            total_found: result.totalFound
+          };
+        } catch (error) {
+          console.error("Error finding Instagram profiles:", error);
+          return {
+            success: false,
+            error: "Failed to find Instagram profiles",
+            message: "I'm having trouble searching for Instagram profiles right now. Please try again later.",
+            query: args.query
           };
         }
         

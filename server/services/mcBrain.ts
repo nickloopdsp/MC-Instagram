@@ -4,6 +4,9 @@ import { URLProcessor, type ExtractedContent } from "./urlProcessor";
 import { VisionAnalysisService, type ImageAnalysisResult } from "./visionAnalysis";
 import { OPTIMIZED_OPENAI_FUNCTIONS, optimizedFunctionHandlers } from "./openAIFunctionsOptimized";
 import { ClaudeService, claudeService } from "./claude";
+import { recallMemory, saveTurn } from "./memoryService";
+import { ModelRouter, type ModelSelectionCriteria } from "./modelRouter";
+import { findInstagramProfiles, formatProfilesForDisplay, createProfileQuickReplies } from "../functions/find_instagram_profiles";
 
 // Using GPT o3 for enhanced reasoning, vision, and web search capabilities
 // Latest OpenAI model with superior intelligence and multimodal understanding
@@ -61,7 +64,7 @@ function analyzeConversationTopic(context: ConversationContext[]): { sameTopicCo
   return { sameTopicCount, currentTopic };
 }
 
-export async function mcBrain(userText: string, conversationContext: ConversationContext[] = [], mediaAttachments: MediaAttachment[] = []): Promise<string> {
+export async function mcBrain(userText: string, conversationContext: ConversationContext[] = [], mediaAttachments: MediaAttachment[] = [], senderId?: string): Promise<string> {
   console.log("\n=== MC Brain Called ===");
   console.log("User Text:", userText);
   console.log("Conversation Context Length:", conversationContext.length);
@@ -288,9 +291,55 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   // Analyze conversation history to check for repeated topics
   const { sameTopicCount, currentTopic } = analyzeConversationTopic(conversationContext);
   
+  // Retrieve memory if enabled
+  let memorySnippets: string[] = [];
+  if (process.env.MEMORY_ENABLED === 'true' && senderId) {
+    try {
+      memorySnippets = await recallMemory(senderId, userText, 6);
+      console.log(`Retrieved ${memorySnippets.length} memory snippets for ${senderId}`);
+    } catch (error) {
+      console.error("Error retrieving memory:", error);
+    }
+  }
+
+  // Intent detection for network.discover_profiles
+  const discoverProfilesPatterns = [
+    /(?:venue|venues|club|clubs)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:producer|producers|engineer|engineers)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:booker|bookers|promoter|promoters)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:manager|managers|label|labels)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:any|find|looking for)\s+(?:hip-hop|techno|indie|pop|rock|electronic)\s+(?:producer|producers)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:contact|reach out to|connect with)\s+(?:producer|producers|venue|venues)\s+(?:in|at)\s+([A-Za-z\s]+)/i,
+    /(?:hip-hop|techno|indie|pop|rock|electronic)\s+(?:producer|producers)\s+(?:(?:in|at)\s+)?([A-Za-z\s]+)/i
+  ];
+  
+  let detectedIntent: string | null = null;
+  let searchQuery: string | null = null;
+  
+  for (const pattern of discoverProfilesPatterns) {
+    const match = userText.match(pattern);
+    if (match) {
+      detectedIntent = 'network.discover_profiles';
+      searchQuery = userText.trim();
+      console.log(`🎯 Detected network.discover_profiles intent with query: "${searchQuery}"`);
+      break;
+    }
+  }
+  
   // Build conversation history for the AI
   // Group messages into proper user-assistant pairs
   const conversationHistory = [];
+  
+  // Add memory snippets at the beginning if available
+  if (memorySnippets.length > 0) {
+    memorySnippets.forEach(snippet => {
+      conversationHistory.unshift({ 
+        role: "system" as const, 
+        content: `[PAST] ${snippet}` 
+      });
+    });
+    console.log(`Added ${memorySnippets.length} memory snippets to conversation history`);
+  }
   
   for (const ctx of conversationContext) {
     if (ctx.messageText) {
@@ -485,12 +534,19 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
         console.log(`📷 Adding follow-up context - media already analyzed in this conversation`);
       }
 
-      // Choose AI provider based on question type
-      const providerChoice = ClaudeService.chooseProvider(userText, extractedContent);
-      console.log(`AI Provider Selected: ${providerChoice.provider.toUpperCase()}`);
-      console.log(`Reason: ${providerChoice.reason}`);
+      // Select model using ModelRouter
+      const modelCriteria: ModelSelectionCriteria = {
+        needsVision: imageAnalysis.length > 0 || mediaAttachments.some(m => m.type === 'image'),
+        hasMediaAttachments: mediaAttachments.length > 0,
+        hasInstagramContent: extractedContent.some(c => c.type.startsWith('instagram_')),
+        extractedContent
+      };
       
-      // Prepare identical conversation context for both providers
+      const selectedModel = ModelRouter.selectModel(modelCriteria);
+      console.log(`🎯 Selected Model: ${selectedModel.name} (${selectedModel.provider})`);
+      console.log(`Capabilities: Vision=${selectedModel.capabilities.vision}, Functions=${selectedModel.capabilities.functions}, FineTuned=${selectedModel.capabilities.fineTuned}`);
+      
+      // Prepare conversation context
       const messages: Array<{role: "system" | "user" | "assistant", content: string}> = [
         {
           role: "system",
@@ -505,7 +561,7 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
       
       let aiResponse: string;
       
-      if (providerChoice.provider === 'claude') {
+      if (selectedModel.provider === 'claude') {
         // Use Claude for response - convert message format for Claude API
         const claudeMessages = messages
           .filter(msg => msg.role !== "system") // Claude takes system prompt separately
@@ -521,26 +577,28 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
           MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature
         );
         
-        // Removed Claude branding to maintain consistent MC brand voice
-        
       } else {
         // Use OpenAI with function calling - use messages as-is
-        console.log(`Using OpenAI model: ${MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model}`);
+        console.log(`Using OpenAI model: ${selectedModel.name}`);
         console.log(`Message count: ${messages.length}`);
         console.log(`User message length: ${userMessage.length} chars`);
         
         try {
-          // Build request parameters (o3 model has specific requirements)
+          // Build request parameters
           const requestParams: any = {
-            model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
+            model: selectedModel.name,
             messages,
-            tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-            tool_choice: "auto", // Let the model decide when to use functions
-            max_completion_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens // o3 uses max_completion_tokens
+            max_completion_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens
           };
           
-          // Only add temperature for non-o3 models (o3 only supports default temperature of 1)
-          if (!MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model.startsWith('o3')) {
+          // Add tools only if model supports functions
+          if (selectedModel.capabilities.functions) {
+            requestParams.tools = OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func }));
+            requestParams.tool_choice = "auto";
+          }
+          
+          // Only add temperature for non-o3 models
+          if (!selectedModel.name.startsWith('o3')) {
             requestParams.temperature = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature;
           }
           
@@ -554,6 +612,39 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
             aiResponse = "I'm MC, your music concierge! What can I help you with today?";
           } else {
             aiResponse = response.choices[0].message.content;
+          }
+          
+          // Handle network.discover_profiles intent if detected
+          if (detectedIntent === 'network.discover_profiles' && searchQuery) {
+            console.log("🔍 Handling network.discover_profiles intent");
+            try {
+              const result = await findInstagramProfiles({ query: searchQuery, limit: 8 });
+              
+              if (result.profiles.length > 0) {
+                // Format the response with discovered profiles
+                aiResponse = formatProfilesForDisplay(result.profiles, searchQuery);
+                
+                // Add quick reply buttons for the profiles
+                const quickReplies = createProfileQuickReplies(result.profiles);
+                
+                // Add ACTION block with profile data and quick replies
+                aiResponse += `\n\n[ACTION]\n${JSON.stringify({
+                  intent: 'network.discover_profiles',
+                  profiles: result.profiles,
+                  quick_replies: quickReplies,
+                  query: searchQuery,
+                  total_found: result.totalFound
+                }, null, 2)}\n[/ACTION]`;
+                
+                console.log(`✅ Found ${result.profiles.length} profiles for "${searchQuery}"`);
+              } else {
+                // No profiles found, ask for more detail
+                aiResponse = `I couldn't find any Instagram profiles matching "${searchQuery}". Could you be more specific? For example:\n• "hip-hop producers in NYC"\n• "techno venues in Berlin"\n• "indie promoters in LA"`;
+              }
+            } catch (error) {
+              console.error("❌ Error in network.discover_profiles:", error);
+              aiResponse = "I'm having trouble searching for Instagram profiles right now. Please try again later or be more specific with your search.";
+            }
           }
         
           // Handle tool calls if any (only for OpenAI)
