@@ -225,25 +225,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`Received message from ${senderId}: ${fullMessage}`);
               console.log(`Media attachments:`, JSON.stringify(mediaInfo, null, 2));
 
-              // Store the incoming webhook event
-              await storage.createWebhookEvent({
-                eventType: "message_received",
-                senderId,
-                recipientId: recipientId || "unknown",
-                messageText: fullMessage,
-                status: "processed"
-              });
+              // Store the incoming webhook event (non-blocking)
+              try {
+                await storage.createWebhookEvent({
+                  eventType: "message_received",
+                  senderId,
+                  recipientId: recipientId || "unknown",
+                  messageText: fullMessage,
+                  status: "processed"
+                });
+              } catch (e) {
+                console.warn("DB unavailable while saving incoming event (continuing):", e instanceof Error ? e.message : e);
+              }
 
               // Log chat message for MC mirroring (future Loop integration)
-              await loopGuidance.logChatMessage(senderId, {
-                source: "instagram_dm",
-                source_msg_id: sourceMessageId || null,
-                text: messageText || "",
-                attachments: mediaInfo.map((m: any) => m.url).filter(Boolean)
-              });
+              try {
+                await loopGuidance.logChatMessage(senderId, {
+                  source: "instagram_dm",
+                  source_msg_id: sourceMessageId || null,
+                  text: messageText || "",
+                  attachments: mediaInfo.map((m: any) => m.url).filter(Boolean)
+                });
+              } catch (e) {
+                console.warn("loopGuidance logging failed (non-blocking):", e instanceof Error ? e.message : e);
+              }
 
               // Get conversation context for this user (now includes the message we just stored)
-              const conversationContext = await storage.getConversationContext(senderId);
+              let conversationContext: ConversationContext[] = [];
+              try {
+                conversationContext = await storage.getConversationContext(senderId);
+              } catch (e) {
+                console.warn("DB unavailable while loading conversation context (continuing):", e instanceof Error ? e.message : e);
+              }
 
               // 1. FIRST: Mark the incoming message as "seen" immediately (already attempted above)
               if (process.env.IG_PAGE_TOKEN) {
@@ -296,19 +309,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 const latencyMs = Date.now() - startTime;
 
-                 // Store the response event with analytics
-                await storage.createWebhookEvent({
-                  eventType: "message_sent",
-                  senderId: recipientId || "bot",
-                  recipientId: senderId,
-                  messageText: null,  // Bot doesn't have incoming message text
-                  responseText: aiResponse,
-                  status: "sent",
-                  intent,
-                  entities,
-                  deepLink,
-                  latencyMs
-                });
+                 // Store the response event with analytics (non-blocking)
+                try {
+                  await storage.createWebhookEvent({
+                    eventType: "message_sent",
+                    senderId: recipientId || "bot",
+                    recipientId: senderId,
+                    messageText: null,  // Bot doesn't have incoming message text
+                    responseText: aiResponse,
+                    status: "sent",
+                    intent,
+                    entities,
+                    deepLink,
+                    latencyMs
+                  });
+                } catch (e) {
+                  console.warn("DB unavailable while saving outgoing event (continuing):", e instanceof Error ? e.message : e);
+                }
                  
                  // Persist memory of both user and assistant turns (fire-and-forget)
                  if (process.env.MEMORY_ENABLED !== "false") {
@@ -320,7 +337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                        saveTurn(senderId, 'assistant', aiResponse)
                      ]);
                    } catch (err) {
-                     console.error("Error saving memory turns:", err);
+                     console.warn("Memory save failed (non-blocking):", err instanceof Error ? err.message : err);
                    }
                  }
 
@@ -351,18 +368,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               }
               
-              // Store the failed event
-              await storage.createWebhookEvent({
-                eventType: "message_failed",
-                senderId: recipientId || "bot",
-                recipientId: senderId,
-                messageText: `Error processing: ${messageText}`,
-                status: "failed",
-                intent,
-                entities,
-                deepLink,
-                latencyMs: Date.now() - startTime
-              });
+               // Store the failed event (best-effort)
+               try {
+                 await storage.createWebhookEvent({
+                   eventType: "message_failed",
+                   senderId: recipientId || "bot",
+                   recipientId: senderId,
+                   messageText: `Error processing: ${messageText}`,
+                   status: "failed",
+                   intent,
+                   entities,
+                   deepLink,
+                   latencyMs: Date.now() - startTime
+                 });
+               } catch {}
             }
           }
         }
