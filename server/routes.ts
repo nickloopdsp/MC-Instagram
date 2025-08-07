@@ -456,6 +456,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(status);
   });
 
+  // Quick OpenAI connectivity test
+  app.get("/api/test-openai", async (_req: Request, res: Response) => {
+    try {
+      const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+      if (!apiKey) {
+        return res.status(500).json({ ok: false, error: "OPENAI_API_KEY missing" });
+      }
+      const { MUSIC_CONCIERGE_CONFIG } = await import("./config/musicConcierge");
+      const { default: OpenAI } = await import("openai");
+      const openai = new OpenAI({ apiKey });
+      const model = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model;
+      const params: any = {
+        model,
+        messages: [
+          { role: "system", content: "You are a health check. Reply with the single word: pong." },
+          { role: "user", content: "ping" }
+        ],
+        max_completion_tokens: 10
+      };
+      const r = await openai.chat.completions.create(params);
+      const content = r.choices?.[0]?.message?.content || "";
+      return res.json({ ok: true, model, finish_reason: r.choices?.[0]?.finish_reason, content });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+  });
+
   // Detailed diagnostics endpoint for Railway debugging
   app.get("/api/diagnostics", (req: Request, res: Response) => {
     const diagnostics = {
