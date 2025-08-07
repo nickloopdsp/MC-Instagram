@@ -12,6 +12,52 @@ function getGraphApiBase(pageAccessToken?: string | null): string {
   }
   return "https://graph.facebook.com/v21.0";
 }
+
+async function postMessageWithFallback(
+  pageAccessToken: string,
+  path: string,
+  payload: any
+) {
+  const primary = getGraphApiBase(pageAccessToken);
+  const hosts = primary.includes('instagram')
+    ? ['https://graph.instagram.com/v21.0', 'https://graph.facebook.com/v21.0']
+    : ['https://graph.facebook.com/v21.0', 'https://graph.instagram.com/v21.0'];
+
+  let lastError: any = null;
+
+  for (const host of hosts) {
+    try {
+      // Clone payload and include messaging_product only for facebook host
+      const body = { ...payload };
+      if (host.includes('facebook.com')) {
+        body.messaging_product = body.messaging_product || 'instagram';
+      } else {
+        // Avoid sending unsupported field to instagram host
+        if ('messaging_product' in body) delete (body as any).messaging_product;
+      }
+
+      const response = await axios.post(
+        `${host}${path}`,
+        body,
+        {
+          headers: {
+            'Authorization': `Bearer ${pageAccessToken}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000
+        }
+      );
+      return response.data;
+    } catch (err: any) {
+      lastError = err;
+      console.error(`Send attempt via ${host}${path} failed:`, err?.response?.data || err?.message);
+      // Try next host
+      continue;
+    }
+  }
+
+  throw lastError;
+}
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -173,7 +219,6 @@ export async function sendInstagramMessage(
   });
   
   const payload = {
-    messaging_product: 'instagram',
     message: messageObj,
     recipient: { id: recipientIdStr }
   };
@@ -182,19 +227,8 @@ export async function sendInstagramMessage(
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const response = await axios.post(
-        `${getGraphApiBase(pageAccessToken)}/me/messages`,
-        payload,
-        {
-          headers: {
-            'Authorization': `Bearer ${pageAccessToken}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000
-        }
-      );
-      
-      console.log("✅ Message sent successfully:", response.data);
+      const response = await postMessageWithFallback(pageAccessToken, `/me/messages`, payload);
+      console.log("✅ Message sent successfully:", response);
       rateLimiter.recordRequest();
       return;
       
@@ -271,25 +305,13 @@ export async function sendTypingIndicator(
   });
   
   const payload = {
-    messaging_product: 'instagram',
     recipient: { id: recipientIdStr },
     sender_action: action
   };
 
   try {
-    const response = await axios.post(
-      `${getGraphApiBase(pageAccessToken)}/me/messages`,
-      payload,
-      {
-        headers: {
-          'Authorization': `Bearer ${pageAccessToken}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 5000
-      }
-    );
-    
-    console.log(`✅ Typing indicator (${action}) sent successfully:`, response.data);
+    const response = await postMessageWithFallback(pageAccessToken, `/me/messages`, payload);
+    console.log(`✅ Typing indicator (${action}) sent successfully:`, response);
     rateLimiter.recordRequest();
     
   } catch (error: any) {
@@ -332,7 +354,6 @@ export async function markMessageAsSeen(
   }
 
   const payload = {
-    messaging_product: 'instagram',
     recipient: { id: recipientId },
     sender_action: "mark_seen"
   };
@@ -342,19 +363,8 @@ export async function markMessageAsSeen(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       
-      const response = await axios.post(
-        `${getGraphApiBase(pageAccessToken)}/me/messages`,
-        payload,
-        {
-          headers: {
-            "Authorization": `Bearer ${pageAccessToken}`,
-            "Content-Type": "application/json"
-          },
-          timeout: 5000, // 5 second timeout for seen indicators
-        }
-      );
-
-      console.log("✅ Message marked as seen successfully:", response.data);
+      const response = await postMessageWithFallback(pageAccessToken, `/me/messages`, payload);
+      console.log("✅ Message marked as seen successfully:", response);
       rateLimiter.recordRequest();
       return;
     } catch (error) {
