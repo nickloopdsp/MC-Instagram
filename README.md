@@ -112,7 +112,21 @@ DATABASE_URL=your_postgresql_connection_string
 
 # Feature Flags
 DEBUG_MODE=false  # Set to 'true' to disable real Instagram message sends
+
+# Memory (per-user conversational memory)
+MEMORY_ENABLED=true
+MEMORY_MAX_TOKENS=800
+MEMORY_MIN_SCORE=0.82
 ```
+
+### Instagram Discovery (Agentic) Variables
+
+Add these in Railway for profile discovery and Business Discovery enrichment:
+
+- `IG_PAGE_TOKEN` – long-lived token you already use
+- `IG_BUSINESS_ID` – instagram_business_account id (via `/{page-id}?fields=instagram_business_account`)
+- `FB_APP_ID` and `FB_APP_SECRET` – to build an App-Access token if Business Discovery requires it
+- `SERPAPI_KEY` or Google CSE credentials if you swap the mock search for a real provider
 
 ## 🧪 **Testing Enhanced Features**
 

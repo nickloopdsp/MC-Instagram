@@ -1,7 +1,7 @@
 import { OpenAI } from "openai";
 import { soundchartsAPI, formatArtistAnalytics } from "./soundcharts";
 import { WebSearchAPI } from "./webSearchApi";
-import { findInstagramProfiles } from "../functions/find_instagram_profiles";
+import { findInstagramProfiles, formatProfilesForDisplay, createProfileQuickReplies } from "../functions/find_instagram_profiles";
 
 // Optimized OpenAI Functions for Instagram DM Music Concierge
 // These functions are designed to support quick routing and basic actions, not detailed analytics
@@ -366,13 +366,17 @@ export class OptimizedFunctionHandlers {
             };
           }
           
+          const formattedMessage = formatProfilesForDisplay(result.profiles, args.query);
+          const quickReplies = createProfileQuickReplies(result.profiles);
+          
           return {
             success: true,
             action: "profiles_found",
-            message: `Found ${result.profiles.length} Instagram profiles for "${args.query}":`,
+            message: formattedMessage,
             profiles: result.profiles,
             query: args.query,
-            total_found: result.totalFound
+            total_found: result.totalFound,
+            quick_replies: quickReplies
           };
         } catch (error) {
           console.error("Error finding Instagram profiles:", error);

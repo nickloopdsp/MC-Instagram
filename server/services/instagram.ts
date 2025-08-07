@@ -127,11 +127,24 @@ export async function sendInstagramMessage(
     }
   }
 
-  // Create message with optional quick reply
+  // Create message with optional quick replies
   const messageObj: any = { text: cleanMessage };
   
-  // Only add quick reply button if there's a specific deep link (not just default dashboard)
-  if (deepLink && deepLink !== "https://app.loop.com/open?utm=ig_dm") {
+  // Parse any quick replies provided in the ACTION block
+  let parsedQuickReplies: any[] | undefined;
+  if (actionMatch) {
+    try {
+      const actionData = JSON.parse(actionMatch[1].trim());
+      if (Array.isArray(actionData.quick_replies) && actionData.quick_replies.length > 0) {
+        parsedQuickReplies = actionData.quick_replies;
+      }
+    } catch {}
+  }
+  
+  // Merge quick replies preference: explicit ones from ACTION take precedence; else fallback to a deep link button
+  if (parsedQuickReplies && parsedQuickReplies.length > 0) {
+    messageObj.quick_replies = parsedQuickReplies;
+  } else if (deepLink && deepLink !== "https://app.loop.com/open?utm=ig_dm") {
     messageObj.quick_replies = [
       {
         content_type: "text",

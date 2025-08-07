@@ -19,7 +19,7 @@ async function testIntegration() {
     
     try {
       // Simulate the mcBrain function call
-      const response = await mcBrain(query, [], [], "test_user_id");
+    const response = await mcBrain(query, [], [], "123456789012345");
       
       // Check if the response contains the expected elements
       const hasIntentDetection = response.includes("network.discover_profiles") || 
@@ -27,7 +27,8 @@ async function testIntegration() {
                                response.includes("followers");
       
       const hasQuickReplies = response.includes("Open @") || 
-                             response.includes("quick_replies");
+                             response.includes("quick_replies") ||
+                             response.includes("Open in Loop");
       
       const hasActionBlock = response.includes("[ACTION]") && response.includes("[/ACTION]");
       

@@ -14,7 +14,7 @@ async function testConversationMemory() {
     // Turn 1: User introduces themselves
     console.log("\n💬 Turn 1: User Introduction");
     let userMessage1 = "Hi MC! I'm Sarah, an indie pop artist from Brooklyn.";
-    let botResponse1 = await mcBrain(userMessage1, conversationHistory, [], "test_user_1");
+    let botResponse1 = await mcBrain(userMessage1, conversationHistory, []);
     console.log(`USER: "${userMessage1}"`);
     console.log(`MC: "${botResponse1}"`);
     
@@ -28,7 +28,7 @@ async function testConversationMemory() {
     // Turn 2: User asks about timing
     console.log("\n💬 Turn 2: Follow-up Question");
     let userMessage2 = "I'm thinking about releasing my next single. When do you think is the best time?";
-    let botResponse2 = await mcBrain(userMessage2, conversationHistory, [], "test_user_1");
+    let botResponse2 = await mcBrain(userMessage2, conversationHistory, []);
     console.log(`USER: "${userMessage2}"`);
     console.log(`MC: "${botResponse2}"`);
     
@@ -42,7 +42,7 @@ async function testConversationMemory() {
     // Turn 3: User asks about playlists
     console.log("\n💬 Turn 3: Another Follow-up");
     let userMessage3 = "What about playlist strategies?";
-    let botResponse3 = await mcBrain(userMessage3, conversationHistory, [], "test_user_1");
+    let botResponse3 = await mcBrain(userMessage3, conversationHistory, []);
     console.log(`USER: "${userMessage3}"`);
     console.log(`MC: "${botResponse3}"`);
 
@@ -59,7 +59,7 @@ async function testConversationMemory() {
       intent: null
     });
     
-    let memoryResponse = await mcBrain(memoryTestMessage, conversationHistory, [], "test_user_1");
+    let memoryResponse = await mcBrain(memoryTestMessage, conversationHistory, []);
     console.log(`MC: "${memoryResponse}"`);
 
     console.log("\n✅ Conversation Memory Test Analysis:");
@@ -86,7 +86,7 @@ async function testConversationMemory() {
       if (ctx.responseText) console.log(`  ${index}: MC: "${ctx.responseText?.split('[ACTION]')[0].trim()}"`);
     });
 
-    const finalTest = await mcBrain("Tell me about yourself Sarah", dbStyleContext, [], "test_user_2");
+    const finalTest = await mcBrain("Tell me about yourself Sarah", dbStyleContext, []);
     console.log(`\nFinal Test Response: "${finalTest}"`);
 
     console.log("\n🎉 Conversation Memory Test Completed!");

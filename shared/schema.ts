@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, bigserial } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,16 +25,6 @@ export const webhookEvents = pgTable("webhook_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const conversationMessages = pgTable("conversation_messages", {
-  id: bigserial("id", { mode: "bigint" }).primaryKey(),
-  igUserId: text("ig_user_id").notNull(),
-  role: text("role").notNull(), // 'user' or 'assistant'
-  content: text("content"),
-  contentSummary: text("content_summary"),
-  embedding: text("embedding"), // Vector will be stored as text, converted by pgvector
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -54,17 +44,7 @@ export const insertWebhookEventSchema = createInsertSchema(webhookEvents).pick({
   deepLinkClicked: true,
 });
 
-export const insertConversationMessageSchema = createInsertSchema(conversationMessages).pick({
-  igUserId: true,
-  role: true,
-  content: true,
-  contentSummary: true,
-  embedding: true,
-});
-
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
-export type ConversationMessage = typeof conversationMessages.$inferSelect;
-export type InsertConversationMessage = z.infer<typeof insertConversationMessageSchema>;

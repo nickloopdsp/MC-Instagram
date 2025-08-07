@@ -1,122 +1,127 @@
-import OpenAI from 'openai';
-import { pool } from '../db';
+import OpenAI from "openai";
+import { pool } from "../db";
 
-const openai = new OpenAI();
+// Environment-configurable flags with sensible defaults
+const MEMORY_ENABLED = (process.env.MEMORY_ENABLED ?? "true").toLowerCase() !== "false";
+const MEMORY_MAX_TOKENS = Number.parseInt(process.env.MEMORY_MAX_TOKENS || "800", 10);
+const MEMORY_MIN_SCORE = Number.parseFloat(process.env.MEMORY_MIN_SCORE || "0.82");
+
+// Rough token estimator: ~4 chars per token
+const CHARS_PER_TOKEN_APPROX = 4;
+const MAX_CHARS = MEMORY_MAX_TOKENS * CHARS_PER_TOKEN_APPROX;
+
+let openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+    if (!apiKey || apiKey === "placeholder_key") {
+      throw new Error("OPENAI_API_KEY is required for memory service");
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 /* ---------- helpers ---------- */
-const embed = async (text: string) => {
-  try {
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
-    });
-    return response.data[0].embedding;
-  } catch (error) {
-    console.error('Error creating embedding:', error);
-    // Return a zero vector as fallback
-    return new Array(1536).fill(0);
-  }
-};
+export async function embed(text: string): Promise<number[]> {
+  const client = getOpenAI();
+  const res = await client.embeddings.create({
+    model: "text-embedding-3-small",
+    input: text,
+  });
+  return res.data[0].embedding as unknown as number[];
+}
 
-const summarize = async (text: string) => {
+export async function summarize(text: string): Promise<string> {
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [{
-        role: 'user',
-        content: `Summarize in one sentence: ${text}`,
-      }],
+    const client = getOpenAI();
+    const res = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: `Summarize in one sentence: ${text}`,
+        },
+      ],
       max_tokens: 40,
+      temperature: 0.2,
     });
-    return response.choices[0].message.content?.trim() ?? text.slice(0, 200);
-  } catch (error) {
-    console.error('Error creating summary:', error);
-    // Return truncated text as fallback
+    return res.choices[0].message.content?.trim() || text.slice(0, 200);
+  } catch (_err) {
     return text.slice(0, 200);
   }
-};
+}
+
+function toVectorLiteral(vec: number[]): string {
+  // pgvector textual format, cast where used
+  return `[${vec.join(",")}]`;
+}
 
 /* ---------- public API ---------- */
 export async function saveTurn(
   igUserId: string,
-  role: 'user' | 'assistant',
+  role: "user" | "assistant",
   content: string
-) {
+): Promise<void> {
+  if (!MEMORY_ENABLED) return;
   try {
     const summary = await summarize(content);
-    const embedding = await embed(summary);
-    
-    const query = `
-      INSERT INTO conversation_messages
+    const emb = await embed(summary);
+    const vectorLiteral = toVectorLiteral(emb);
+    await pool.query(
+      `insert into conversation_messages
         (ig_user_id, role, content, content_summary, embedding)
-      VALUES ($1, $2, $3, $4, $5)
-    `;
-    
-    await pool.query(query, [igUserId, role, content, summary, embedding]);
-    
-    console.log(`✅ Memory saved for ${igUserId} (${role}): ${summary.substring(0, 50)}...`);
-  } catch (error) {
-    console.error('Error saving memory:', error);
+       values ($1, $2, $3, $4, $5::vector(1536))`,
+      [igUserId, role, content, summary, vectorLiteral]
+    );
+  } catch (err) {
+    console.error("memoryService.saveTurn error:", err);
   }
 }
 
 export async function recallMemory(
-  igUserId: string, 
-  query: string, 
+  igUserId: string,
+  query: string,
   limit = 6
 ): Promise<string[]> {
+  if (!MEMORY_ENABLED) return [];
   try {
-    const queryEmbedding = await embed(query);
-    
-    const sql = `
-      SELECT content
-      FROM conversation_messages
-      WHERE ig_user_id = $1
-      ORDER BY embedding <-> $2
-      LIMIT $3
-    `;
-    
-    const result = await pool.query(sql, [igUserId, queryEmbedding, limit]);
-    
-    const memories = result.rows.map(r => r.content);
-    console.log(`🧠 Retrieved ${memories.length} memories for ${igUserId}`);
-    
-    return memories;
-  } catch (error) {
-    console.error('Error recalling memory:', error);
+    const qEmb = await embed(query);
+    const vectorLiteral = toVectorLiteral(qEmb);
+
+    // Retrieve by cosine distance, compute similarity = 1 - distance
+    const { rows } = await pool.query(
+      `select content, 1 - (embedding <=> $2::vector(1536)) as score
+       from conversation_messages
+       where ig_user_id = $1
+       order by embedding <=> $2::vector(1536)
+       limit $3`,
+      [igUserId, vectorLiteral, Math.max(limit * 2, limit)]
+    );
+
+    const snippets: string[] = [];
+    let usedChars = 0;
+    for (const row of rows) {
+      const score = Number(row.score ?? 0);
+      const content: string = row.content ?? "";
+      if (!content) continue;
+      if (score < MEMORY_MIN_SCORE) continue;
+      if (usedChars + content.length > MAX_CHARS) break;
+      snippets.push(content);
+      usedChars += content.length;
+      if (snippets.length >= limit) break;
+    }
+    return snippets;
+  } catch (err) {
+    console.error("memoryService.recallMemory error:", err);
     return [];
   }
 }
 
-export async function getMemoryStats(igUserId: string) {
-  try {
-    const sql = `
-      SELECT 
-        COUNT(*) as total_messages,
-        COUNT(CASE WHEN role = 'user' THEN 1 END) as user_messages,
-        COUNT(CASE WHEN role = 'assistant' THEN 1 END) as assistant_messages,
-        MIN(created_at) as first_message,
-        MAX(created_at) as last_message
-      FROM conversation_messages
-      WHERE ig_user_id = $1
-    `;
-    
-    const result = await pool.query(sql, [igUserId]);
-    return result.rows[0];
-  } catch (error) {
-    console.error('Error getting memory stats:', error);
-    return null;
-  }
-}
+export const memoryConfig = {
+  enabled: MEMORY_ENABLED,
+  maxTokens: MEMORY_MAX_TOKENS,
+  minScore: MEMORY_MIN_SCORE,
+};
 
-export async function clearUserMemory(igUserId: string) {
-  try {
-    const sql = `DELETE FROM conversation_messages WHERE ig_user_id = $1`;
-    const result = await pool.query(sql, [igUserId]);
-    console.log(`🗑️  Cleared ${result.rowCount} memories for ${igUserId}`);
-    return result.rowCount;
-  } catch (error) {
-    console.error('Error clearing memory:', error);
-    return 0;
-  }
-}
+

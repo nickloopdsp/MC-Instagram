@@ -79,7 +79,7 @@ export function formatProfilesForDisplay(profiles: InstagramProfile[], query: st
 
 // Helper function to create quick reply buttons for profiles
 export function createProfileQuickReplies(profiles: InstagramProfile[]) {
-  return profiles.slice(0, 4).map(profile => ({
+  return profiles.slice(0, 5).map(profile => ({
     content_type: "text" as const,
     title: `Open @${profile.username}`,
     payload: profile.url

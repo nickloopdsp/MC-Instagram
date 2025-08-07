@@ -10,13 +10,13 @@ async function testGPTo3() {
   try {
     // Test 1: General Music Question (should use OpenAI)
     console.log("\n🎵 Test 1: General Music Question");
-    const generalResponse = await mcBrain("Hi MC! I need some quick tips for promoting my new song.", [], [], "test_user");
+    const generalResponse = await mcBrain("Hi MC! I need some quick tips for promoting my new song.", [], []);
     console.log(`USER: "Hi MC! I need some quick tips for promoting my new song."`);
     console.log(`MC: "${generalResponse.substring(0, 200)}..."`);
 
     // Test 2: Actionable Advice (should use OpenAI) 
     console.log("\n💡 Test 2: Actionable Music Advice");
-    const adviceResponse = await mcBrain("Give me some recommendations for growing my fanbase on social media.", [], [], "test_user");
+    const adviceResponse = await mcBrain("Give me some recommendations for growing my fanbase on social media.", [], []);
     console.log(`USER: "Give me some recommendations for growing my fanbase on social media."`);
     console.log(`MC: "${adviceResponse.substring(0, 200)}..."`);
 
@@ -27,7 +27,7 @@ async function testGPTo3() {
       url: 'https://example.com/test-image.jpg',
       title: 'Studio setup photo'
     }];
-    const imageResponse = await mcBrain("What do you think of my studio setup?", [], imageAttachments, "test_user");
+    const imageResponse = await mcBrain("What do you think of my studio setup?", [], imageAttachments);
     console.log(`USER: "What do you think of my studio setup?" [with image]`);
     console.log(`MC: "${imageResponse.substring(0, 200)}..."`);
 

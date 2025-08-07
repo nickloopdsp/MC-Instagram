@@ -1,7 +1,8 @@
 import axios from "axios";
 import { WebSearchAPI } from "./webSearchApi";
 
-const INSTAGRAM_API_BASE = "https://graph.instagram.com/v21.0";
+// Business Discovery is part of the Instagram Graph API hosted under Facebook Graph
+const INSTAGRAM_API_BASE = "https://graph.facebook.com/v21.0";
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 
 // Simple in-memory cache for development (use Redis in production)
@@ -73,10 +74,16 @@ export class InstagramDiscoveryService {
       }
       
       // Extract URLs from search results
-      const urls = searchResponse.results.map(result => result.url);
+      const urls = (searchResponse.results || []).map(result => result.url);
       return this.extractHandles(urls);
     } catch (error) {
       console.error("❌ Google search failed:", error);
+      // Fallback: try naive extraction from any summary text if available
+      try {
+        const summary: string = (error as any)?.summary || '';
+        const urls = Array.from(summary.matchAll(/https?:\/\/instagram\.com\/[a-zA-Z0-9._]+/g)).map(m => m[0]);
+        if (urls.length > 0) return this.extractHandles(urls);
+      } catch {}
       throw new Error("Failed to search for Instagram profiles");
     }
   }
@@ -157,7 +164,7 @@ export class InstagramDiscoveryService {
         bio: businessDiscovery.biography
       };
     } catch (error: any) {
-      if (error.response?.status === 100) {
+      if (error.response?.status === 100 || error.response?.data?.error?.code === 100) {
         // Error 100: Not a business/creator account
         console.log(`⚠️ @${handle} is not a business/creator account`);
         return null;
