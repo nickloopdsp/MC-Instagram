@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { log } from "./vite";
-import { serveStatic } from "./staticServer";
+import { log, serveStatic } from "./staticServer";
 
 const app = express();
 // Capture raw body for webhook signature verification while still parsing JSON
