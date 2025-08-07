@@ -50,7 +50,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Process all messages for now to debug the real message issue
     // TODO: Re-enable signature verification in production
 
-    if (body.object === "instagram") {
+    // Instagram DM webhooks may arrive with object "page" (Messenger Platform) or "instagram" (IG Graph)
+    if (body.object === "instagram" || body.object === "page") {
       // Loop through each entry
       for (const entry of body.entry || []) {
         // Loop through messaging events
@@ -329,6 +330,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
+    } else {
+      console.warn("Unhandled webhook object type:", body.object);
     }
 
     res.status(200).send("EVENT_RECEIVED");
