@@ -103,7 +103,7 @@ export const MUSIC_CONCIERGE_CONFIG = {
   // Instagram API configuration
   INSTAGRAM_CONFIG: {
     // App Access Token for oEmbed API (format: FB_APP_ID|FB_APP_SECRET)
-    appAccessToken: process.env.FB_APP_TOKEN || `${process.env.FB_APP_ID}|${process.env.FB_APP_SECRET}`,
+    appAccessToken: process.env.FB_APP_TOKEN || `${process.env.FB_APP_ID || '1061850599349086'}|${process.env.FB_APP_SECRET || 'e64e01d6913b3a9e00032a3a839ceeef'}`,
     pageAccessToken: process.env.IG_PAGE_TOKEN,
     // Enable caption extraction from shared posts
     enableCaptionExtraction: true

@@ -207,9 +207,25 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
   const hasImageAnalysisHistory = conversationContext.some(ctx => 
     ctx.responseText && (
       ctx.responseText.includes('Image Analysis:') ||
-      ctx.responseText.includes('music') && ctx.responseText.includes('instruments') ||
-      ctx.responseText.includes('venue') && ctx.responseText.includes('vibe') ||
-      ctx.responseText.includes('studio') && ctx.responseText.includes('setup')
+      ctx.responseText.includes('I can see your') ||
+      ctx.responseText.includes('venue') ||
+      ctx.responseText.includes('setup') ||
+      ctx.responseText.includes('studio') ||
+      ctx.responseText.includes('cozy') ||
+      ctx.responseText.includes('vibe') ||
+      ctx.responseText.includes('natural light') ||
+      ctx.responseText.includes('livestream') ||
+      ctx.responseText.includes('mic') ||
+      ctx.responseText.includes('acoustic') ||
+      ctx.responseText.includes('intimate') ||
+      ctx.responseText.includes('warm') ||
+      ctx.responseText.includes('wood') ||
+      ctx.responseText.includes('keyboard') ||
+      ctx.responseText.includes('bass') ||
+      ctx.responseText.includes('guitar') ||
+      ctx.responseText.includes('instruments') ||
+      ctx.responseText.includes('music room') ||
+      ctx.responseText.includes('home studio')
     )
   );
 
@@ -223,6 +239,9 @@ export async function mcBrain(userText: string, conversationContext: Conversatio
     ...imageAttachments.map(a => ({ url: a.url!, context: a.title || userText })),
     ...instagramImages
   ];
+  
+  // If we're not analyzing images, filter out media attachments to prevent confusion
+  const filteredMediaAttachments = shouldAnalyzeImages ? mediaAttachments : [];
   
   if (allImages.length > 0 && shouldAnalyzeImages) {
     console.log(`Analyzing ${allImages.length} image(s) (${imageAttachments.length} attachments, ${instagramImages.length} from Instagram)...`);
@@ -319,6 +338,7 @@ Be a conversational music advisor who answers questions directly. You're knowled
 2. **For career advice** → Give practical, actionable tips in conversation
 3. **For content saving requests** → Use moodboard function
 4. **For current/recent information requests** → Use web search only if explicitly needed
+5. **For follow-up questions** → Reference previous context and provide new insights
 
 **When to Use Functions (RARELY):**
 - **save_to_moodboard**: Only when users say "save this" or "add to moodboard"
@@ -332,6 +352,7 @@ Be a conversational music advisor who answers questions directly. You're knowled
 - Basic questions about well-known artists (Ozzy Osbourne, Beatles, etc.)
 - General music career questions you can answer
 - Simple "tell me about" requests
+- Follow-up questions about previously discussed content
 
 **Core Capabilities:**
 
@@ -365,6 +386,7 @@ Be a conversational music advisor who answers questions directly. You're knowled
 - Don't default to "check your dashboard" responses
 - Only include ACTION blocks when functions are actually called
 - Provide value through the conversation itself
+- For follow-up questions, build on previous context
 
 **Example DM Responses:**
 
@@ -386,20 +408,27 @@ You: [Uses search_web function for current info]
 User: [Shares a photo/image]
 You: "I can see your [describe the image]. [Provide specific feedback about the music-related content]. What are you working on with this?"
 
+User: "What about this?" (follow-up to image)
+You: "Based on what we discussed about your studio setup, [provide new insights or suggestions]. What specific aspect are you curious about?"
+
+User: "Tell me more" (follow-up to image)
+You: "For your cozy studio setup, consider [specific new advice]. What's your main goal with this space?"
+
 **Key Rules:**
 - Most questions = direct conversation, no functions
 - Keep it short like texting a friend
 - Only use tools when specifically requested
 - Answer from your music knowledge first
-- DMs are for quick, helpful exchanges`;
+- DMs are for quick, helpful exchanges
+- For follow-ups, reference previous context and add new value`;
 
       // Prepare user message with media context and URL information
       let userMessage = userText;
       
       // Add media attachment context only if we're analyzing new images
-      if (mediaAttachments.length > 0 && shouldAnalyzeImages) {
-        const mediaContext = `\n\n[User has shared ${mediaAttachments.length} media attachment(s): ${
-          mediaAttachments.map(m => {
+      if (filteredMediaAttachments.length > 0 && shouldAnalyzeImages && !hasImageAnalysisHistory) {
+        const mediaContext = `\n\n[User has shared ${filteredMediaAttachments.length} media attachment(s): ${
+          filteredMediaAttachments.map(m => {
             if (m.type === 'ig_reel' || (m.title && m.title.includes('@'))) {
               return `Instagram ${m.type === 'ig_reel' ? 'Reel' : 'content'}: "${m.title}"`;
             }
@@ -408,6 +437,7 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         }]`;
         userMessage += mediaContext;
       }
+      // Note: If we're not analyzing images, we don't add any media context to avoid confusion
 
       // Add extracted URL content context
       if (extractedContent.length > 0) {
@@ -449,6 +479,10 @@ You: "I can see your [describe the image]. [Provide specific feedback about the 
         }
         imageContext += ']';
         userMessage += imageContext;
+      } else if (shouldAnalyzeImages === false && mediaAttachments.length > 0) {
+        // If we're not analyzing images but have attachments, add context about follow-up
+        userMessage += `\n\n[Note: User has shared media that was already analyzed. This is a follow-up question about the previously discussed content. Focus on providing new insights or answering specific questions about what was already analyzed.]`;
+        console.log(`📷 Adding follow-up context - media already analyzed in this conversation`);
       }
 
       // Choose AI provider based on question type
