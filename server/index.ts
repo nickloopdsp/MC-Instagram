@@ -66,7 +66,8 @@ app.use((req, res, next) => {
   // Always use prebuilt static assets in production container
   if (app.get("env") === "development") {
     try {
-      const { setupVite } = await import("./vite");
+      const viteModulePath = "./" + "vite"; // prevent bundler from statically including vite
+      const { setupVite } = await import(viteModulePath);
       await setupVite(app, server);
     } catch {
       serveStatic(app);

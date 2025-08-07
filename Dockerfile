@@ -26,15 +26,15 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 
-# Only copy needed artifacts
-COPY --from=base /app/package.json /app/package-lock.json ./
-COPY --from=base /app/dist ./dist
-RUN npm ci --omit=dev
-
 ENV NODE_ENV=production
 ENV PORT=5000
-EXPOSE 5000
 
+# Copy only runtime artifacts
+COPY --from=base /app/package.json /app/package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=base /app/dist ./dist
+
+EXPOSE 5000
 CMD ["node", "dist/index.js"]
 
 
