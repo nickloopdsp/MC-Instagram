@@ -598,6 +598,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Deep diagnostics: verify token type/scopes and identity
+  app.get("/api/diagnose-instagram", async (req: Request, res: Response) => {
+    try {
+      const accessToken = process.env.IG_PAGE_TOKEN;
+      const appToken = process.env.FB_APP_TOKEN || (process.env.FB_APP_ID && process.env.FB_APP_SECRET ? `${process.env.FB_APP_ID}|${process.env.FB_APP_SECRET}` : undefined);
+      if (!accessToken) {
+        return res.status(500).json({ error: "IG_PAGE_TOKEN not configured" });
+      }
+      const axios = (await import('axios')).default;
+      const results: any = { ok: true };
+      // Identify token on facebook graph
+      try {
+        const meFb = await axios.get(`https://graph.facebook.com/v21.0/me`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'id,name,username,account_type' },
+          timeout: 8000
+        });
+        results.facebook_me = meFb.data;
+      } catch (e: any) {
+        results.facebook_me_error = e?.response?.data || e?.message;
+      }
+      // Identify token on instagram graph (if supported)
+      try {
+        const meIg = await axios.get(`https://graph.instagram.com/v21.0/me`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'id,username,account_type' },
+          timeout: 8000
+        });
+        results.instagram_me = meIg.data;
+      } catch (e: any) {
+        results.instagram_me_error = e?.response?.data || e?.message;
+      }
+      // Debug token scopes if app token available
+      if (appToken) {
+        try {
+          const dbg = await axios.get(`https://graph.facebook.com/debug_token`, {
+            params: { input_token: accessToken, access_token: appToken },
+            timeout: 8000
+          });
+          results.debug_token = dbg.data;
+        } catch (e: any) {
+          results.debug_token_error = e?.response?.data || e?.message;
+        }
+      }
+      return res.json(results);
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+  });
+
   // Test message endpoint to verify Instagram API connectivity
   app.post("/api/test-message", async (req: Request, res: Response) => {
     const pageAccessToken = process.env.IG_PAGE_TOKEN;
