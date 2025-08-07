@@ -5,6 +5,7 @@ import { mcBrain, type ConversationContext } from "./services/mcBrain";
 import { sendInstagramMessage, verifyWebhookSignature, markMessageAsSeen, validateInstagramConfig, checkUserCanReceiveMessages } from "./services/instagram";
 import { loopGuidance } from "./services/loopApi";
 import { URLProcessor } from "./services/urlProcessor";
+import { recallMemory, saveTurn } from "./services/memoryService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // GET /webhook - Meta webhook verification
@@ -224,8 +225,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
 
               // Process message through mcBrain with conversation context and media info
-              const aiResponse = await mcBrain(processedMessageText || "", conversationContext, mediaInfo);
+              const aiResponse = await mcBrain(processedMessageText || "", conversationContext, mediaInfo, senderId);
               console.log(`AI Response: ${aiResponse}`);
+
+              // Save memory if enabled
+              if (process.env.MEMORY_ENABLED === 'true' && senderId) {
+                try {
+                  await saveTurn(senderId, 'user', processedMessageText || "");
+                  await saveTurn(senderId, 'assistant', aiResponse);
+                  console.log(`✅ Memory saved for ${senderId}`);
+                } catch (error) {
+                  console.error("Error saving memory:", error);
+                }
+              }
 
               // Turn off typing indicator before sending response
               if (process.env.IG_PAGE_TOKEN) {
