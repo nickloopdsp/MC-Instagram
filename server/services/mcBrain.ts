@@ -606,27 +606,48 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
         console.log(`User message length: ${userMessage.length} chars`);
         
         try {
-          // Build request parameters depending on model family
-          const selectedModel = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model;
-          const usingO3 = selectedModel.startsWith('o3');
-          const requestParams: any = {
-            model: selectedModel,
-            messages,
-            tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-            tool_choice: "auto",
-          };
+          // Attempt multiple models in order: configured -> gpt-4o -> o3
+          const configured = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model;
+          const candidateModels = [configured, 'gpt-4o', 'o3'];
+          let lastError: any = null;
+          let response: any = null;
 
-          if (usingO3) {
-            // o3 style
-            requestParams.max_completion_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
-          } else {
-            // GPT-4/5 style
-            requestParams.max_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
-            requestParams.temperature = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature;
+          for (const model of candidateModels) {
+            try {
+              const usingO3 = model.startsWith('o3');
+              const params: any = {
+                model,
+                messages,
+                tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: 'function', function: func })),
+                tool_choice: 'auto'
+              };
+              if (usingO3) {
+                params.max_completion_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
+              } else {
+                params.max_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
+                params.temperature = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature;
+              }
+
+              console.log(`🧠 Trying model: ${model}`);
+              response = await getOpenAI().chat.completions.create(params);
+              if (response?.choices?.[0]?.message?.content) {
+                console.log(`✅ Model ${model} responded with finish_reason=${response.choices[0].finish_reason}`);
+                break; // success
+              }
+              console.warn(`⚠️ Model ${model} returned empty content; trying next`);
+            } catch (err: any) {
+              lastError = err;
+              const message = err?.response?.data?.error?.message || err?.message || String(err);
+              console.warn(`❌ Model ${model} failed: ${message}`);
+              // Try next candidate
+            }
           }
-          
-          const response = await getOpenAI().chat.completions.create(requestParams);
-          
+
+          if (!response || !response.choices?.[0]?.message?.content) {
+            if (lastError) throw lastError; // bubble to outer catch
+            throw new Error('No content from any candidate model');
+          }
+
           console.log(`OpenAI Response status: ${response.choices?.[0]?.finish_reason}`);
           console.log(`Response content length: ${response.choices?.[0]?.message?.content?.length || 0} chars`);
           
