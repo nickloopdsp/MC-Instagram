@@ -1,4 +1,5 @@
 import axios from "axios";
+import { MUSIC_CONCIERGE_CONFIG } from "../config/musicConcierge";
 
 export interface ExtractedContent {
   type: 'instagram_post' | 'instagram_reel' | 'instagram_story' | 'generic_url';
@@ -59,14 +60,17 @@ export class URLProcessor {
                  'instagram_post';
     
     try {
+      // Prefer configured App Access Token from config (FB_APP_TOKEN = FB_APP_ID|FB_APP_SECRET)
+      const configuredAppToken = MUSIC_CONCIERGE_CONFIG?.INSTAGRAM_CONFIG?.appAccessToken
+        || process.env.FB_APP_TOKEN
+        || (process.env.FB_APP_ID && process.env.FB_APP_SECRET ? `${process.env.FB_APP_ID}|${process.env.FB_APP_SECRET}` : undefined);
+
       // Use Instagram's oEmbed API to get post information (latest Graph version)
-      const oembedUrl = `https://graph.facebook.com/v21.0/instagram_oembed?url=${encodeURIComponent(url)}&access_token=${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
-      
-      // If no Facebook app credentials, try public oEmbed endpoint (may be limited)
-      const publicOembedUrl = `https://graph.facebook.com/v21.0/instagram_oembed?url=${encodeURIComponent(url)}`;
-      
+      const oembedUrl = `https://graph.facebook.com/v21.0/instagram_oembed?url=${encodeURIComponent(url)}${configuredAppToken ? `&access_token=${encodeURIComponent(configuredAppToken)}` : ''}`;
+
+      // If no app token, request without token (may be rate/feature limited)
       try {
-        const response = await axios.get(process.env.FACEBOOK_APP_ID ? oembedUrl : publicOembedUrl);
+        const response = await axios.get(oembedUrl);
         const data = response.data;
         
         return {

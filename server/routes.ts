@@ -7,6 +7,28 @@ import { loopGuidance } from "./services/loopApi";
 import { URLProcessor } from "./services/urlProcessor";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // In-memory deduplication of incoming message IDs to avoid double replies
+  const processedMessageIds = new Map<string, number>();
+  const DEDUP_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+  function makeEventKey(senderId?: string, mid?: string | null, messageText?: string | null, attachmentCount?: number, timestamp?: number): string {
+    if (mid) return `mid:${mid}`;
+    // Fallback composite when mid is missing
+    return `f:${senderId || 'unknown'}:${messageText?.slice(0, 50) || ''}:${attachmentCount || 0}:${timestamp || 0}`;
+  }
+
+  function isDuplicateEvent(key: string): boolean {
+    const now = Date.now();
+    // cleanup old entries without using for..of on Map (for wider TS targets)
+    processedMessageIds.forEach((timestamp, k) => {
+      if (now - timestamp > DEDUP_TTL_MS) {
+        processedMessageIds.delete(k);
+      }
+    });
+    if (processedMessageIds.has(key)) return true;
+    processedMessageIds.set(key, now);
+    return false;
+  }
   // GET /webhook - Meta webhook verification
   app.get("/webhook", (req: Request, res: Response) => {
     const mode = req.query["hub.mode"];
@@ -87,8 +109,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        // Loop through messaging events (from either path)
-        for (const messagingEvent of collectedEvents) {
+          // Deduplicate events by message id before processing to avoid duplicates across paths
+          const uniqueByMid = new Map<string, any>();
+          for (const ev of collectedEvents) {
+            const mid = ev?.message?.mid || '';
+            if (mid) {
+              if (!uniqueByMid.has(mid)) uniqueByMid.set(mid, ev);
+            } else {
+              // If no mid, include as-is using a synthetic key to preserve
+              uniqueByMid.set(`no-mid-${Math.random().toString(36).slice(2)}`, ev);
+            }
+          }
+
+          // Loop through messaging events (from either path) after de-duping
+          for (const messagingEvent of Array.from(uniqueByMid.values())) {
           const senderId = messagingEvent.sender?.id;
           const recipientId = messagingEvent.recipient?.id;
           const messageText = messagingEvent.message?.text;
@@ -124,6 +158,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isNumeric: /^\d+$/.test(senderId)
             });
           }
+
+            // Deduplication guard: skip if we've already processed this message id recently
+            const dedupKey = makeEventKey(senderId, sourceMessageId, messageText, messagingEvent.message?.attachments?.length || 0, messagingEvent.timestamp);
+            if (isDuplicateEvent(dedupKey)) {
+              console.log("🔁 Duplicate event detected, skipping further processing for:", { dedupKey, sourceMessageId });
+              continue;
+            }
 
           // Extract media attachments
           const attachments = messagingEvent.message?.attachments || [];

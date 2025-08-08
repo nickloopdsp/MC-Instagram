@@ -148,13 +148,31 @@ export async function mcBrain(
     const title = attachment.title || '';
     
     // Detect Instagram content by multiple patterns + URL/ID patterns
+    const lowerTitle = title.toLowerCase();
+    const url = attachment.url || '';
+    const isLikelyIgHost = (() => {
+      try {
+        const h = new URL(url).hostname;
+        return (
+          h.includes('instagram.com') ||
+          h.includes('cdninstagram.com') ||
+          h.includes('fbcdn.net') ||
+          h.includes('graph.facebook.com')
+        );
+      } catch { return false; }
+    })();
+
+    const isNumericId = !!url && !url.startsWith('http') && /^\d+$/.test(url);
+
     const isInstagramContent = 
       attachment.type === 'ig_reel' ||
-      title.includes('@') ||
-      /^[a-z][a-z0-9_]{2,}/.test(title.split(' ')[0]) || // Username pattern like "yelova911"
-      title.toLowerCase().includes('instagram') ||
-      title.toLowerCase().includes('reel') ||
-      title.toLowerCase().includes('story') ||
+      lowerTitle.includes('@') ||
+      (/^[a-z][a-z0-9_]{2,}/.test(title.split(' ')[0])) || // Username-like first token
+      lowerTitle.includes('instagram') ||
+      lowerTitle.includes('reel') ||
+      lowerTitle.includes('story') ||
+      isLikelyIgHost ||
+      isNumericId ||
       InstagramPostResolver.looksLikeAttachmentId(attachment.url) ||
       InstagramPostResolver.isInstagramPermalink(attachment.url);
     
@@ -588,17 +606,22 @@ You: "For your cozy studio setup, consider [specific new advice]. What's your ma
         console.log(`User message length: ${userMessage.length} chars`);
         
         try {
-          // Build request parameters (o3 model has specific requirements)
+          // Build request parameters depending on model family
+          const selectedModel = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model;
+          const usingO3 = selectedModel.startsWith('o3');
           const requestParams: any = {
-            model: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model,
+            model: selectedModel,
             messages,
             tools: OPTIMIZED_OPENAI_FUNCTIONS.map(func => ({ type: "function", function: func })),
-            tool_choice: "auto", // Let the model decide when to use functions
-            max_completion_tokens: MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens // o3 uses max_completion_tokens
+            tool_choice: "auto",
           };
-          
-          // Only add temperature for non-o3 models (o3 only supports default temperature of 1)
-          if (!MUSIC_CONCIERGE_CONFIG.AI_CONFIG.model.startsWith('o3')) {
+
+          if (usingO3) {
+            // o3 style
+            requestParams.max_completion_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
+          } else {
+            // GPT-4/5 style
+            requestParams.max_tokens = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.maxTokens;
             requestParams.temperature = MUSIC_CONCIERGE_CONFIG.AI_CONFIG.temperature;
           }
           

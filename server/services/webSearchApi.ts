@@ -3,6 +3,9 @@
 
 import axios from 'axios';
 
+// Feature flag: keep discovery on mock search unless explicitly enabled
+const REAL_SEARCH_ENABLED = ((process.env.DISCOVERY_USE_REAL_SEARCH || process.env.USE_REAL_SEARCH) || "").toLowerCase() === "true";
+
 interface SearchResult {
   title: string;
   url: string;
@@ -20,18 +23,62 @@ interface SearchResponse {
 
 export class WebSearchAPI {
   private static async performSearch(query: string, context: string = "general"): Promise<SearchResult[]> {
-    // In a production environment, this would use a real search API like:
-    // - Google Custom Search API
-    // - Bing Search API  
-    // - SerpAPI
-    // - ScaleSerp
-    
-    // For now, we'll simulate some results based on common music industry queries
+    const serpApiKey = process.env.SERPAPI_KEY || process.env.SERP_API_KEY;
+    const gCseKey = process.env.GOOGLE_CSE_KEY || process.env.GOOGLE_API_KEY;
+    const gCseCx = process.env.GOOGLE_CSE_ID || process.env.GOOGLE_CX;
+
+    // If real search is not enabled, immediately return mock results
+    if (!REAL_SEARCH_ENABLED) {
+      const mockResults = this.getMockResults(query, context);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      return mockResults;
+    }
+
+    // Prefer SerpAPI if configured
+    if (serpApiKey) {
+      try {
+        const url = 'https://serpapi.com/search.json';
+        const { data } = await axios.get(url, {
+          params: { engine: 'google', q: query, api_key: serpApiKey },
+          timeout: 8000
+        });
+        const organic: any[] = data.organic_results || [];
+        const results: SearchResult[] = organic.slice(0, 12).map((r: any) => ({
+          title: r.title || 'Result',
+          url: r.link || r.url || '',
+          snippet: r.snippet || r.description || '',
+          date: r.date || undefined
+        })).filter(r => !!r.url);
+        if (results.length > 0) return results;
+      } catch (err) {
+        console.warn('SerpAPI search failed, falling back:', (err as any)?.message || String(err));
+      }
+    }
+
+    // Next, try Google Custom Search if configured
+    if (gCseKey && gCseCx) {
+      try {
+        const url = 'https://www.googleapis.com/customsearch/v1';
+        const { data } = await axios.get(url, {
+          params: { key: gCseKey, cx: gCseCx, q: query },
+          timeout: 8000
+        });
+        const items: any[] = data.items || [];
+        const results: SearchResult[] = items.slice(0, 12).map((it: any) => ({
+          title: it.title || 'Result',
+          url: it.link || it.formattedUrl || '',
+          snippet: it.snippet || '',
+          date: undefined
+        })).filter(r => !!r.url);
+        if (results.length > 0) return results;
+      } catch (err) {
+        console.warn('Google CSE search failed, falling back:', (err as any)?.message || String(err));
+      }
+    }
+
+    // Fallback to mock results when no provider is configured or both fail
     const mockResults = this.getMockResults(query, context);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
+    await new Promise(resolve => setTimeout(resolve, 200));
     return mockResults;
   }
 
@@ -149,11 +196,16 @@ export class WebSearchAPI {
       // Force concrete results for Instagram discovery so downstream handle extraction works
       if (lower.includes('site:instagram.com')) {
         const results = await this.performSearch(query, context);
-        const summary = this.createSummary(query, results);
+        // Prefer Instagram-domain URLs in the results ordering
+        const prioritized = [
+          ...results.filter(r => /instagram\.com\//i.test(r.url)),
+          ...results.filter(r => !/instagram\.com\//i.test(r.url))
+        ];
+        const summary = this.createSummary(query, prioritized);
         return {
           success: true,
           query,
-          results,
+          results: prioritized,
           summary
         };
       }

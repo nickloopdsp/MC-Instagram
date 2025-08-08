@@ -58,23 +58,31 @@ export async function findInstagramProfiles(params: FindInstagramProfilesParams)
 // Helper function to format profiles for display
 export function formatProfilesForDisplay(profiles: InstagramProfile[], query: string): string {
   if (profiles.length === 0) {
-    return `I couldn't find any Instagram profiles matching "${query}". Try being more specific or try a different search term.`;
+    return `I couldn't find solid Instagram profiles for "${query}". Add a neighborhood, venue type, or genre (e.g., "venues in Paris indie"), and I’ll refine the list.`;
   }
   
   const role = extractRoleFromQuery(query);
   const location = extractLocationFromQuery(query);
+  const genre = extractGenreFromQuery(query);
   
-  let header = `🎸 Here are ${profiles.length} ${role}${location ? ` in ${location}` : ''} you might vibe with:\n\n`;
+  let header = `🎸 Here are ${profiles.length} ${role}${location ? ` in ${location}` : ''}:\n\n`;
   
   const formattedProfiles = profiles.map((profile, index) => {
-    const followerText = profile.followers > 0 
-      ? `${profile.followers.toLocaleString()} followers`
-      : 'follower count unavailable';
-    
-    return `• @${profile.username} — ${followerText}`;
+    const followerText = profile.followers && profile.followers > 0 
+      ? ` — ${profile.followers.toLocaleString()} followers`
+      : '';
+    return `• @${profile.username}${followerText}`;
   }).join('\n');
   
-  return header + formattedProfiles + '\n\nTap a handle to DM them or let me draft an intro!';
+  // Build a concise DM draft example (we'll personalize per handle when sending)
+  const first = profiles[0];
+  const draftParts: string[] = [];
+  draftParts.push(`Hey @${first.username} — I'm an artist${location ? ` in ${location}` : ''}${genre ? ` making ${genre}` : ''}. Love your work and would love to connect about production. Can I share a couple demos?`);
+
+  const nextStep = `\n\nWant intros? Reply with "send to 1" or "send to 1,3" and I’ll draft DMs.`;
+  const tip = `\n\nDraft I'll use (example):\n“${draftParts[0]}”`;
+
+  return header + formattedProfiles + nextStep + tip;
 }
 
 // Helper function to create quick reply buttons for profiles
@@ -124,4 +132,13 @@ function extractLocationFromQuery(query: string): string | null {
   }
   
   return null;
+}
+
+function extractGenreFromQuery(query: string): string | null {
+  const genreList = [
+    'hip-hop','rap','indie','indie pop','pop','rock','electronic','edm','house','techno','jazz','r&b','metal','folk','punk','drill','trap'
+  ];
+  const lower = query.toLowerCase();
+  const found = genreList.find(g => lower.includes(g));
+  return found || null;
 }

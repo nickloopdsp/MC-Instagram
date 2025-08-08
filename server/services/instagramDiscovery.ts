@@ -75,7 +75,11 @@ export class InstagramDiscoveryService {
       
       // Extract URLs from search results
       const urls = (searchResponse.results || []).map(result => result.url);
-      return this.extractHandles(urls);
+      const handles = this.extractHandles(urls);
+
+      // Filter out obviously mocked placeholder handles (e.g., venue_inparis_1)
+      const filtered = this.filterLikelyMockHandles(handles);
+      return filtered;
     } catch (error) {
       console.error("❌ Google search failed:", error);
       // Fallback: try naive extraction from any summary text if available
@@ -108,13 +112,32 @@ export class InstagramDiscoveryService {
     }
     
     // Remove duplicates and limit results
-    const uniqueHandles = Array.from(new Set(handles)).slice(0, 20);
+    let uniqueHandles = Array.from(new Set(handles)).slice(0, 20);
+
+    // Additional sanity filters: drop handles that clearly look synthetic
+    uniqueHandles = uniqueHandles.filter(h => !/^venue_inparis_\d+$/i.test(h));
     
     if (DEBUG_MODE) {
       console.log("📝 Extracted handles:", uniqueHandles);
     }
     
     return uniqueHandles;
+  }
+
+  private filterLikelyMockHandles(handles: string[]): string[] {
+    if (handles.length === 0) return handles;
+    const pattern = /^(?:artist|producer|producers|venue|venues|club|clubs|promoter|promoters|engineer|engineers|manager|managers|label|labels)_[a-z]+\d*_[0-9]+$/i;
+    const altPattern = /.+_in[a-z]+_[0-9]+$/i;
+    const sharePrefix = (arr: string[]): boolean => {
+      if (arr.length < 5) return false;
+      const prefix = arr[0].replace(/_[0-9]+$/, '');
+      return arr.every(h => h.startsWith(prefix) && /_[0-9]+$/.test(h));
+    };
+    const allMockLike = handles.every(h => pattern.test(h) || altPattern.test(h)) || sharePrefix(handles);
+    if (allMockLike) {
+      return [];
+    }
+    return handles;
   }
 
   private async enrichProfile(handle: string): Promise<InstagramProfile | null> {
@@ -228,6 +251,11 @@ export class InstagramDiscoveryService {
     try {
       const handles = await this.googleSearch(query);
       
+      // If handles appear mocked, avoid returning placeholders
+      if (handles.length === 0) {
+        return [];
+      }
+
       return handles.slice(0, limit).map(handle => ({
         username: handle,
         fullName: handle,
