@@ -58,6 +58,28 @@ async function postMessageWithFallback(
 
   throw lastError;
 }
+
+export async function sendInstagramReaction(
+  recipientId: string,
+  sourceMessageId: string,
+  reaction: 'love' | 'like' | 'haha' | 'wow' | 'sad' | 'angry' | 'unreact',
+  pageAccessToken: string
+): Promise<void> {
+  try {
+    const payload: any = {
+      recipient: { id: String(recipientId) },
+      sender_action: reaction === 'unreact' ? 'unreact' : 'react',
+      payload: { message_id: sourceMessageId }
+    };
+    if (reaction !== 'unreact') {
+      payload.payload.reaction = reaction;
+    }
+    const response = await postMessageWithFallback(pageAccessToken, `/me/messages`, payload);
+    console.log('✅ Reaction sent successfully:', response);
+  } catch (error: any) {
+    console.error('❌ Failed to send reaction:', error?.response?.data || error?.message);
+  }
+}
 const DEBUG_MODE = process.env.DEBUG_MODE === "true";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;

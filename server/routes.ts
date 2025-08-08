@@ -305,7 +305,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               // Send response back via Instagram API
               if (pageAccessToken) {
-                 await sendInstagramMessage(senderId, aiResponse, pageAccessToken);
+                 const msgId = await (async () => {
+                   try {
+                     await sendInstagramMessage(senderId, aiResponse, pageAccessToken);
+                     return null; // we don't get message_id from our wrapper currently
+                   } catch (e) {
+                     throw e;
+                   }
+                 })();
 
                 const latencyMs = Date.now() - startTime;
 
@@ -342,6 +349,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                  }
 
                 console.log(`Response sent to ${senderId} (${latencyMs}ms)`);
+
+                 // 3. Finally, explicitly send 'mark_seen' again to ensure native Seen appears
+                 if (process.env.IG_PAGE_TOKEN) {
+                   try {
+                     const { markMessageAsSeen } = await import("./services/instagram");
+                     await markMessageAsSeen(senderId, process.env.IG_PAGE_TOKEN);
+                   } catch (e) {
+                     console.warn("Post-send mark_seen failed (non-blocking):", e instanceof Error ? e.message : e);
+                   }
+                 }
               } else {
                 console.error("IG_PAGE_TOKEN not configured");
                 await storage.createWebhookEvent({
